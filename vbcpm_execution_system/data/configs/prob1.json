@@ -1,0 +1,39 @@
+{
+    "robot": 
+    {
+        "pose":
+        {
+            "pos": [0,0,0],
+            "ori": [0,0,0,1]
+        },
+        "urdf": "data/models/robot/motoman.urdf"
+    },
+    "table": 
+    {
+        "pose":
+        {
+            "pos": [0.55,0,-0.19],
+            "ori": [0,0,0,1]
+        },
+        "urdf": "data/models/table/table.urdf"
+    },
+    "camera":
+    {
+        "extrinsic": [[-0.0182505, -0.724286, 0.689259, 0.329174],[-0.999453, 0.0322427, 0.00741728, -0.036492],[-0.0275958, -0.688746, -0.724478, 1.24839],[0.0, 0.0, 0.0, 1.0]],
+        "intrinsic": [90.0, 1.78, 0.1, 1.5]
+    },
+    "objects":
+    [
+        {
+            "pose":
+            {
+                "pos": [0.69,0,0.9],
+                "ori": [0,0,0,1]
+            },
+            "scale": [2,2,2],
+            "visual_mesh": "data/models/objects/sim_model/a_cups/meshes/visual.obj",
+            "collision_mesh": "data/models/objects/sim_model/a_cups/collision_meshes/collision.obj",
+            "mass": 1
+        }
+    ]
+}
