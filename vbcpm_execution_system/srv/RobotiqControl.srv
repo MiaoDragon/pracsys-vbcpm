@@ -1,0 +1,7 @@
+string[] finger_joint_names # can be several joint names that have the same value
+float64 position
+float64 velocity
+float64 force
+float64 time
+---
+bool success
