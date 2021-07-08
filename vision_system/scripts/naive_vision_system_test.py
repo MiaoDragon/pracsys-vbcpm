@@ -149,13 +149,13 @@ depth_img[depth_img<=near]=0.
 
 from naive_vision_system import *
 
-table_h = 0.68  # Found out that the point cloud is tilted, and need more height than usual to filter out the table
+table_h = 0.62  # Found out that the point cloud is tilted, and need more height than usual to filter out the table
 focal = 640 / np.tan(fov * np.pi/180 / 2)/2
 # focal = 320
 print('focal:')
 print(focal)
-cam_intrinsics = [[focal, 0, 340],
-                  [0, focal, 340],
+cam_intrinsics = [[focal, 0, 320],
+                  [0, focal, 320],
                   [0, 0, 1.]]
 # cam_extrinsics = [[-0.0182505, -0.724286, 0.689259, 0.329174],[-0.999453, 0.0322427, 0.00741728, -0.036492],[-0.0275958, -0.688746, -0.724478, 1.24839],[0.0, 0.0, 0.0, 1.0]]
 cam_intrinsics = np.array(cam_intrinsics)

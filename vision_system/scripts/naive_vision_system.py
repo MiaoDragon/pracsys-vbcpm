@@ -270,7 +270,7 @@ class VisionSystem():
         total_pcd = np.concatenate([pcd, occ_pcd], axis=0)
         import open3d as o3d
         pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(self.prev_pcd)
+        pcd.points = o3d.utility.Vector3dVector(total_pcd)
         o3d.visualization.draw_geometries([pcd])
 
 
