@@ -1,0 +1,7 @@
+world_height: 960
+world_width: 1280 
+
+PPM:  20.0  # pixels per meter
+TARGET_FPS: 60
+workspace_lower_ratio: 0.1
+camera_position_ratio: 0.08
