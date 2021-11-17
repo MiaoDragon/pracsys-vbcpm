@@ -1,0 +1,11 @@
+numpy
+open3d
+opencv_python
+pandas
+pybullet
+rospkg
+scikit_image
+scipy
+scikit-image
+tqdm
+transformations
