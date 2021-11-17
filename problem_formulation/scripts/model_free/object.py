@@ -30,12 +30,16 @@ at the beginning
 
 TODO: TSDF has some problems
 """
-from cv2 import threshold
 import numpy as np
+from visual_utilities import *
+import open3d as o3d
+
 class ObjectModel():
     def __init__(self, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03):
         """
         initialize the object model to be the bounding box containing the conservative volume of the object
+
+        zmin: table lowest z (this is fixed)
         """
         self.origin_x = xmin
         self.origin_y = ymin
@@ -105,8 +109,11 @@ class ObjectModel():
     def update_transform_from_relative(self, rel_transform):
         # when the object is moved, update the transform
         # previous: W T O1
-        # relative transform: O1 T O2
+        # relative transform: 02 T O1
         self.transform = rel_transform.dot(self.transform)
+        self.world_in_voxel = np.linalg.inv(self.transform)
+        self.world_in_voxel_rot = self.world_in_voxel[:3,:3]
+        self.world_in_voxel_tran = self.world_in_voxel[:3,3]
         # self.transform = self.transform.dot(rel_transform)
 
     def expand_model(self, new_xmin, new_ymin, new_zmin, new_xmax, new_ymax, new_zmax):
@@ -128,7 +135,7 @@ class ObjectModel():
 
         nx = max(0, nx)
         ny = max(0, ny)
-        nz = max(0, nz)
+        nz = 0#max(0, nz)
 
         # update new lower-bound to be integer number of resolution
         new_xmin = self.xmin - nx * self.resol[0]
@@ -194,9 +201,13 @@ class ObjectModel():
         """
         given the *segmented* depth image belonging to the object, update tsdf
         if new parts are seen, expand the model (this only happens when this object is inactive, or hidden initially)
+
+        #NOTE
+        in this version, we update only the parts which have depth pixels in the segmented image
+        since an object might be hidden by others, and we might miss object parts
         """
         # obtain pixel locations for each of the voxels
-        voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0))
+        voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0)) + 0.5
         # voxel_vecs = np.concatenate([self.voxel_x, self.voxel_y, self.voxel_z], axis=3)
         voxel_vecs = voxel_vecs.reshape(-1,3) * self.resol
         transformed_voxels = self.transform[:3,:3].dot(voxel_vecs.T).T + self.transform[:3,3]
@@ -230,20 +241,102 @@ class ObjectModel():
         tsdf = (voxel_depth - cam_to_voxel_depth)# * self.scale
         valid_space = (voxel_depth>0) & (tsdf > self.min_v) & valid_mask
 
-        print('tsdf: ')
-        print(((tsdf[valid_space]>self.min_v) & (tsdf[valid_space]<self.max_v)).astype(int).sum() / valid_space.astype(int).sum())
+        # print('tsdf: ')
+        # print(((tsdf[valid_space]>self.min_v) & (tsdf[valid_space]<self.max_v)).astype(int).sum() / valid_space.astype(int).sum())
 
         self.tsdf[valid_space] = (self.tsdf[valid_space] * self.tsdf_count[valid_space] + tsdf[valid_space]) / (self.tsdf_count[valid_space] + 1)
         self.tsdf_count[valid_space] = self.tsdf_count[valid_space] + 1
 
-        self.tsdf[self.tsdf>self.max_v] = self.max_v
+        self.tsdf[self.tsdf>self.max_v*1.1] = self.max_v*1.1
         self.tsdf[self.tsdf<self.min_v] = self.min_v
 
         # handle invalid space: don't update
         invalid_space = ((voxel_depth <= 0) | (tsdf < self.min_v)) & valid_mask
 
         self.tsdf[self.tsdf_count==0] = 0.0
-    
+
+
+    def update_tsdf_unhidden(self, depth_img, color_img, camera_extrinsics, camera_intrinsics):
+        """
+        given the *segmented* depth image belonging to the object, update tsdf
+        if new parts are seen, expand the model (this only happens when this object is inactive, or hidden initially)
+
+        in this version, we do not limit ourselves to the parts which have depth values
+        # NOTE: but the depth value needs to be max at places that are segmented out
+        """
+        # obtain pixel locations for each of the voxels
+        voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0)) + 0.5
+        # voxel_vecs = np.concatenate([self.voxel_x, self.voxel_y, self.voxel_z], axis=3)
+        voxel_vecs = voxel_vecs.reshape(-1,3) * self.resol
+        transformed_voxels = self.transform[:3,:3].dot(voxel_vecs.T).T + self.transform[:3,3]
+        # get to the image space
+        cam_transform = np.linalg.inv(camera_extrinsics)
+        transformed_voxels = cam_transform[:3,:3].dot(transformed_voxels.T).T + cam_transform[:3,3]
+
+        # cam_to_voxel_dist = np.linalg.norm(transformed_voxels, axis=1)
+        cam_to_voxel_depth = np.array(transformed_voxels[:,2])
+        # intrinsics
+        cam_intrinsics = camera_intrinsics
+        fx = cam_intrinsics[0][0]
+        fy = cam_intrinsics[1][1]
+        cx = cam_intrinsics[0][2]
+        cy = cam_intrinsics[1][2]
+        transformed_voxels[:,0] = transformed_voxels[:,0] / transformed_voxels[:,2] * fx + cx
+        transformed_voxels[:,1] = transformed_voxels[:,1] / transformed_voxels[:,2] * fy + cy
+        transformed_voxels = np.floor(transformed_voxels).astype(int)
+        voxel_depth = np.zeros((len(transformed_voxels)))
+        valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
+                        (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
+        voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
+        valid_mask = valid_mask.reshape(self.voxel_x.shape)
+        voxel_depth = voxel_depth.reshape(self.voxel_x.shape)
+
+        cam_to_voxel_depth = cam_to_voxel_depth.reshape(self.voxel_x.shape)
+
+
+        # handle valid space
+        tsdf = np.zeros(self.tsdf.shape)
+        tsdf = (voxel_depth - cam_to_voxel_depth)# * self.scale
+        valid_space = (tsdf > self.min_v) & valid_mask
+
+        # # visualize the valid space
+        # pcd_v = visualize_pcd(self.sample_conservative_pcd()/self.resol, [0,0,0])
+
+        # opt_pcd_v = visualize_pcd(self.sample_optimistic_pcd()/self.resol, [1,1,0])
+        # voxel_v = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, valid_space, [1,0,0])
+
+        # # obtain the camera transform in the voxel space
+        # cam_in_voxel = self.world_in_voxel.dot(camera_extrinsics)
+        # cam_in_voxel[:3,3] = cam_in_voxel[:3,3] / self.resol
+        # cam_in_voxel = visualize_coordinate_frame_centered(size=10, transform=cam_in_voxel)
+        # # cam_in_voxel2 = visualize_coordinate_frame_centered()
+
+        # o3d.visualization.draw_geometries([pcd_v, opt_pcd_v, voxel_v, cam_in_voxel])    
+
+
+
+        # check teh values for the valid space
+        # print('valid space values: ', tsdf[valid_space])
+
+
+        # print('tsdf: ')
+        # print(((tsdf[valid_space]>self.min_v) & (tsdf[valid_space]<self.max_v)).astype(int).sum() / valid_space.astype(int).sum())
+
+        self.tsdf[valid_space] = (self.tsdf[valid_space] * self.tsdf_count[valid_space] + tsdf[valid_space]) / (self.tsdf_count[valid_space] + 1)
+        self.tsdf_count[valid_space] = self.tsdf_count[valid_space] + 1
+
+        self.tsdf[self.tsdf>self.max_v*1.1] = self.max_v*1.1
+        self.tsdf[self.tsdf<self.min_v] = self.min_v
+
+        # handle invalid space: don't update
+        invalid_space = (tsdf < self.min_v) & valid_mask
+
+        self.tsdf[self.tsdf_count==0] = 0.0
+
+
+
+
+
 
     def sample_pcd(self, mask, n_sample=10):
         # sample voxels in te mask
@@ -254,7 +347,6 @@ class ObjectModel():
         voxel_z = self.voxel_z[mask]
 
         total_sample = np.zeros((len(voxel_x), n_sample, 3))
-        print(total_sample.shape)
         total_sample = total_sample + grid_sample
         total_sample = total_sample + np.array([voxel_x, voxel_y, voxel_z]).T.reshape(len(voxel_x),1,3)
 
@@ -269,8 +361,30 @@ class ObjectModel():
         # obtain the pcd of the conservative volume
         return self.sample_pcd(self.get_optimistic_model(), n_sample)
 
-
-
+    def get_center_frame(self, pcd):
+        """
+        get the rotation  C R O  (object frame relative to center frame)
+        translation C T O
+        (center uses the same z value as the object)
+        """
+        # find the center of the pcd
+        midpoint = pcd.mean(axis=0)
+        transform = np.zeros((4,4))
+        transform[3,3] = 1.0
+        transform[:3,:3] = np.eye(3)
+        transform[:2,3] = -midpoint[:2]
+        return transform
+    
+    def get_net_transform_from_center_frame(self, pcd, transform):
+        """
+        given transform from center to world, get the net transform
+        from obstacle frame to world
+        """
+        obj_in_center = self.get_center_frame(pcd)
+        net_transform = np.array(transform)
+        net_transform[:3,:3] = transform[:3,:3].dot(obj_in_center[:3,:3])
+        net_transform[:3,3] = transform[:3,:3].dot(obj_in_center[:3,3]) + transform[:3,3]
+        return net_transform
 
 def test():
     # test the module

@@ -36,8 +36,8 @@ class Camera():
 
         s = s / np.linalg.norm(s)
         u_prime = np.cross(s, L)
-        print('u_prime: ', u_prime)
-        print('up_vector: ', up_vec/np.linalg.norm(up_vec))
+        # print('u_prime: ', u_prime)
+        # print('up_vector: ', up_vec/np.linalg.norm(up_vec))
 
         # transformation matrix: rotation
         rot_mat = np.array([s, -u_prime, L])#.T  # three rows: Right, Up, Forward (column-major form). After transpose, row-major form
@@ -48,7 +48,7 @@ class Camera():
         T_mat[:3,3] = tran_mat
 
         T_mat = tf.inverse_matrix(T_mat)
-        print(T_mat)
+        # print(T_mat)
 
         focal = img_size / np.tan(fov * np.pi/180 / 2)/2
         cam_intrinsics = [[focal, 0, img_size/2],
@@ -64,6 +64,8 @@ class Camera():
         self.info['img_size'] = img_size
         self.info['far'] = far
         self.info['near'] = near
+        self.info['pos'] = cam_pos
+        self.info['look_at'] = look_at
 
     def sense_with_perceive(self, obj_pcds, target_obj_pcd, obj_ids, target_obj_id):
         """
