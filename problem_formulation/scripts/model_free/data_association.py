@@ -8,6 +8,7 @@ class GroundTruthDataAssociation():
     def __init__(self):
         self.objects = []  # record recognized objects
         self.obj_ids = {}  # pybullet id to object id
+        self.obj_ids_reverse = {}
         self.num_objs = 0
     def set_recognized_objects(self, objects):
         self.objects = objects
@@ -23,14 +24,16 @@ class GroundTruthDataAssociation():
                 continue
             if seg_ids[i] in workspace_ids:
                 continue
-            print('seg id: ', seg_ids[i])
+            # print('seg id: ', seg_ids[i])
             if seg_ids[i] in self.obj_ids.keys():
                 assoc[seg_ids[i]] = self.obj_ids[seg_ids[i]]
+
             else:
                 # create a new entry
                 self.obj_ids[seg_ids[i]] = self.num_objs
                 self.num_objs += 1
                 assoc[seg_ids[i]] = self.obj_ids[seg_ids[i]]
+                self.obj_ids_reverse[self.obj_ids[seg_ids[i]]] = seg_ids[i]
         return assoc
 
 
