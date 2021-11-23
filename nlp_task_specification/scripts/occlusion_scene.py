@@ -232,10 +232,9 @@ class OcclusionScene():
             indices = indices[indices[:,2]<self.voxel_x.shape[2]]
             occupied = np.zeros(occluded.shape).astype(bool)
             occupied[indices[:,0],indices[:,1],indices[:,2]] = 1
-            occupied = occluded & occupied
-
+            # occupied = occluded & ~occupied
             occupied_label[occupied==1] = i+1
-            occluded[indices[:,0],indices[:,1],indices[:,2]] = 0
+            # occluded[indices[:,0],indices[:,1],indices[:,2]] = 0
 
 
 

@@ -24,13 +24,11 @@ from robot import Robot
 import os
 import time
 from camera import Camera
-from occlusion_3d import Occlusion
 from occlusion_scene import OcclusionScene
 
 import open3d as o3d
 import cam_utilities
 
-from occlusion_share_graph import OcclusionShareGraph
 from visual_utilities import *
 
 
@@ -221,123 +219,6 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                 obj_colors.append(color)
                 break
 
-    obj_pcd_indices_list = []
-    for i in range(len(obj_poses)):
-        # if i != 0:
-        obj_pcd = obj_poses[i][:3, :3].dot(obj_pcds[i].T).T + obj_poses[i][:3, 3]
-        obj_pcd_indices = obj_pcd
-        obj_pcd_indices_list.append(obj_pcd_indices)
-
-    width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
-        width=camera.info['img_size'],
-        height=camera.info['img_size'],
-        viewMatrix=camera.info['view_mat'],
-        projectionMatrix=camera.info['proj_mat']
-    )
-    # cv2.imshow('camera_rgb', rgb_img)
-    depth_img = depth_img / camera.info['factor']
-    far = camera.info['far']
-    near = camera.info['near']
-    depth_img = far * near / (far - (far - near) * depth_img)
-    depth_img[depth_img >= far] = 0.
-    depth_img[depth_img <= near] = 0.
-
-    occluded = occlusion.scene_occlusion(depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics'])
-    # occluded = occlusion.get_occlusion_single_obj(camera.info['extrinsics'], obj_poses[-1], obj_pcds[-1])
-    occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
-        occluded, camera.info['extrinsics'], camera.info['intrinsics'], obj_poses[1:], obj_pcds[1:]
-    )
-
-    pcd, _ = cam_utilities.pcd_from_depth(camera.info['intrinsics'], camera.info['extrinsics'], depth_img, rgb_img)
-
-    pcd = np.concatenate([pcd, np.ones(pcd.shape[0]).reshape((-1, 1))], axis=1)
-    # transform the ray vector into the voxel_grid space
-    # notice that we have to divide by the resolution vector
-    pcd = np.linalg.inv(occlusion.transform).dot(pcd.T).T
-    pcd = pcd[:, :3] / occlusion.resol
-
-    # vol_box = o3d.geometry.OrientedBoundingBox()
-    # vol_box.center = vol_bnds.mean(1)
-    # vol_box.extent = vol_bnds[:, 1] - vol_bnds[:, 0]
-    voxel_grids = []
-    color_pick = np.zeros((6, 3))
-    color_pick[0] = np.array([1., 0., 0.])
-    color_pick[1] = np.array([0., 1.0, 0.])
-    color_pick[2] = np.array([0., 0., 1.])
-    color_pick[3] = np.array([252 / 255, 169 / 255, 3 / 255])
-    color_pick[4] = np.array([252 / 255, 3 / 255, 252 / 255])
-    color_pick[5] = np.array([20 / 255, 73 / 255, 82 / 255])
-
-    occupied_grids = []
-    voxel_pcds_indices = list(range(1, len(obj_poses))) + [-1]
-    for i in voxel_pcds_indices:
-        voxel_pcd = o3d.geometry.PointCloud()
-        voxel_x = occlusion.voxel_x[occlusion_label == i].reshape(-1, 1)
-        voxel_y = occlusion.voxel_y[occlusion_label == i].reshape(-1, 1)
-        voxel_z = occlusion.voxel_z[occlusion_label == i].reshape(-1, 1)
-
-        voxel_pcd_points = np.concatenate([voxel_x, voxel_y, voxel_z], axis=1)
-        voxel_pcd.points = o3d.utility.Vector3dVector(voxel_pcd_points)
-        colors = np.zeros(voxel_pcd_points.shape)
-        colors = colors + color_pick[(i - 1) % len(color_pick)]
-        voxel_pcd.colors = o3d.utility.Vector3dVector(colors)
-
-        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(voxel_pcd, 1.)
-        voxel_grids.append(voxel_grid)
-
-        occupied_pcd = o3d.geometry.PointCloud()
-        voxel_x = occlusion.voxel_x[occupied_label == i].reshape(-1, 1)
-        voxel_y = occlusion.voxel_y[occupied_label == i].reshape(-1, 1)
-        voxel_z = occlusion.voxel_z[occupied_label == i].reshape(-1, 1)
-        occupied_pcd_points = np.concatenate([voxel_x, voxel_y, voxel_z], axis=1)
-        occupied_pcd_points = np.concatenate([voxel_x, voxel_y, voxel_z], axis=1)
-        occupied_pcd.points = o3d.utility.Vector3dVector(occupied_pcd_points)
-        colors = np.zeros(voxel_pcd_points.shape)
-        colors = colors + color_pick[(i - 1) % len(color_pick)]
-        occupied_pcd.colors = o3d.utility.Vector3dVector(colors)
-
-        occupied_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(occupied_pcd, 1.)
-        occupied_grids.append(occupied_grid)
-
-    pcd_pcd = o3d.geometry.PointCloud()
-    pcd_pcd.points = o3d.utility.Vector3dVector(pcd)
-    colors = np.zeros(pcd.shape)
-    colors[:, 0] = .1
-    colors[:, 1] = .1
-    colors[:, 2] = .1
-    pcd_pcd.colors = o3d.utility.Vector3dVector(colors)
-
-    # perfect perception
-    obj_voxel_list = []
-    for i in range(len(obj_pcd_indices_list)):
-
-        obj_pcd_indices = np.concatenate(
-            [obj_pcd_indices_list[i],
-             np.ones(obj_pcd_indices_list[i].shape[0]).reshape((-1, 1))], axis=1
-        )
-        # transform the ray vector into the voxel_grid space
-        # notice that we have to divide by the resolution vector
-        obj_pcd_indices = np.linalg.inv(occlusion.transform).dot(obj_pcd_indices.T).T
-        obj_pcd_indices = obj_pcd_indices[:, :3] / occlusion.resol
-
-        obj_pcd = o3d.geometry.PointCloud()
-        obj_pcd.points = o3d.utility.Vector3dVector(obj_pcd_indices)
-        colors = np.zeros(obj_pcd_indices.shape)
-        colors[:, 0] = obj_colors[i][0]
-        colors[:, 1] = obj_colors[i][1]
-        colors[:, 2] = obj_colors[i][2]
-        obj_pcd.colors = o3d.utility.Vector3dVector(colors)
-
-        obj_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(obj_pcd, 1)
-        # print('object pcd: ')
-        # print(obj_pcd_indices)
-        obj_voxel_list.append(obj_voxel)
-    # return_pcds
-
-    # o3d.visualization.draw_geometries([pcd_pcd] + obj_voxel_list)
-    # o3d.visualization.draw_geometries([pcd_pcd] + voxel_grids)
-    # o3d.visualization.draw_geometries([pcd_pcd, occupancy_voxel])
-
     return (
         pid,
         scene_dict,
@@ -345,27 +226,19 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         workspace,
         camera,
         occlusion,
-        obj_voxel_list,
-        obj_poses[1:],
-        obj_pcds[1:],
-        obj_ids[1:],
-        obj_poses[0],
-        obj_pcds[0],
-        obj_ids[0],
+        obj_poses,
+        obj_pcds,
+        obj_ids,
+        obj_colors,
     )
 
 
-pid, scene_dict, robot, workspace, camera, occlusion, obj_voxel_list, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = random_one_problem(
-    scene='scene_table.json', level=1, num_objs=7, num_hiding_objs=1
+pid, scene_dict, robot, workspace, camera, occlusion, obj_poses, obj_pcds, obj_ids, obj_colors = random_one_problem(
+    scene='scene_table.json',
+    level=1,
+    num_objs=7,
+    num_hiding_objs=1,
 )
-# construct the occlusion constraint graph
-# occluded_list = []
-# for i in range(len(obj_poses)):
-#     occluded = occlusion.get_occlusion_single_obj(camera.info['extrinsics'], obj_poses[i], obj_pcds[i])
-#     occluded_list.append(occluded)
-# occlusion_graph = OcclusionShareGraph(obj_poses, occluded_list)
-# print('occlusion graph: ')
-# print(occlusion_graph.connected)
 
 width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
     width=camera.info['img_size'],
@@ -373,7 +246,7 @@ width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
     viewMatrix=camera.info['view_mat'],
     projectionMatrix=camera.info['proj_mat']
 )
-# cv2.imshow('camera_rgb', rgb_img)
+
 depth_img = depth_img / camera.info['factor']
 far = camera.info['far']
 near = camera.info['near']
@@ -382,34 +255,64 @@ depth_img[depth_img >= far] = 0.
 depth_img[depth_img <= near] = 0.
 
 occluded = occlusion.scene_occlusion(depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics'])
-# occluded = occlusion.get_occlusion_single_obj(camera.info['extrinsics'], obj_poses[-1], obj_pcds[-1])
 occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
     occluded, camera.info['extrinsics'], camera.info['intrinsics'], obj_poses, obj_pcds
 )
-
 # intersected, shadow_occupancy = occlusion.shadow_occupancy_single_obj(occlusion_label > 0, None, None, target_pcd)
-# voxel1 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occlusion_label > 0, [0, 0, 0])
 
-# voxel_x, voxel_y, voxel_z = np.indices(intersected.shape).astype(float)
+hidden_objs = set()
+for i in range(len(obj_poses)):
+    obj_i = i + 1
+    obj_i_vox = occupied_label == obj_i
+    obj_i_area = obj_i_vox.sum()
+    for j in range(len(obj_poses)):
+        if i == j:
+            continue
+        obj_j = j + 1
+        occ_j_vox = occlusion_label == obj_j
 
-# voxel2 = visualize_voxel(voxel_x, voxel_y, voxel_z, intersected, [1, 0, 0])
+        print(obj_i, obj_j, (obj_i_vox & occ_j_vox).sum(), obj_i_area, (obj_i_vox & occ_j_vox).sum() / obj_i_area)
+        if (obj_i_vox & occ_j_vox).sum() / obj_i_area > 0.25:
+            hidden_objs.add(obj_i)
+            break
 
-# voxel3 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, shadow_occupancy, [0, 1, 0])
-# o3d.visualization.draw_geometries([voxel1, voxel3])
-# o3d.visualization.draw_geometries([voxel1, voxel3])
-o3d.visualization.draw_geometries(obj_voxel_list)
+print(hidden_objs)
 
-voxels = []
-for obj in range(1, max(occupied_label.flatten())):
-    voxel = visualize_voxel(
-        occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occupied_label == obj, [
-            np.random.uniform(0, 1),
-            np.random.uniform(0, 1),
-            np.random.uniform(0, 1),
-        ]
+# visualize occupied voxel grid
+vox_occupied = []
+vox_occluded = []
+vox_revealed = []
+for i in range(len(obj_poses)):
+    obj_i = i + 1
+    voxel1 = visualize_voxel(
+        occlusion.voxel_x,
+        occlusion.voxel_y,
+        occlusion.voxel_z,
+        occupied_label == obj_i,
+        obj_colors[i],
     )
-    voxels.append(voxel)
-o3d.visualization.draw_geometries(voxels)
+    vox_occupied.append(voxel1)
+    voxel2 = visualize_voxel(
+        occlusion.voxel_x,
+        occlusion.voxel_y,
+        occlusion.voxel_z,
+        occlusion_label == obj_i,
+        obj_colors[i],
+    )
+    vox_occluded.append(voxel2)
+    voxel3 = visualize_voxel(
+        occlusion.voxel_x,
+        occlusion.voxel_y,
+        occlusion.voxel_z,
+        occupied_label == obj_i,
+        [0, 0, 0],
+    )
+    vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
+    # o3d.visualization.draw_geometries([voxel1, voxel2])
+
+o3d.visualization.draw_geometries(vox_occupied)
+# o3d.visualization.draw_geometries(vox_occluded)
+o3d.visualization.draw_geometries(vox_revealed)
 
 print('obj_poses length: ', len(obj_poses))
 print('occluded_list length: ', len(occluded_list))
