@@ -13,23 +13,24 @@ level-1: simple geometry objects. not cluttered. number of objects is less.
 
 """
 
+import os
+import time
 import json
 import random
 import numpy as np
 from numpy.core.fromnumeric import size
+
 import rospkg
 import pybullet as p
-from workspace import Workspace
-from robot import Robot
-import os
-import time
-from camera import Camera
-from occlusion_scene import OcclusionScene
-
 import open3d as o3d
-import cam_utilities
 
+import cam_utilities
+from robot import Robot
+from camera import Camera
 from visual_utilities import *
+from dep_graph import DepGraph
+from workspace import Workspace
+from occlusion_scene import OcclusionScene
 
 
 def random_one_problem(scene, level, num_objs, num_hiding_objs):
@@ -254,6 +255,15 @@ depth_img = far * near / (far - (far - near) * depth_img)
 depth_img[depth_img >= far] = 0.
 depth_img[depth_img <= near] = 0.
 
+# simulated sensing
+# obj_ind = list(range(1, len(obj_poses) + 1))
+# rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
+#     obj_pcds[1:],
+#     obj_pcds[0],
+#     obj_ind[1:],
+#     obj_ind[0],
+# )
+
 occluded = occlusion.scene_occlusion(depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics'])
 occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
     occluded, camera.info['extrinsics'], camera.info['intrinsics'], obj_poses, obj_pcds
@@ -277,11 +287,14 @@ for i in range(len(obj_poses)):
             break
 
 print(hidden_objs)
+np.save("TEMP.npy", occupied_label)
+dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
 
 # visualize occupied voxel grid
 vox_occupied = []
 vox_occluded = []
 vox_revealed = []
+vox_ups = []
 for i in range(len(obj_poses)):
     obj_i = i + 1
     voxel1 = visualize_voxel(
@@ -308,11 +321,23 @@ for i in range(len(obj_poses)):
         [0, 0, 0],
     )
     vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
+    voxel4 = visualize_voxel(
+        occlusion.voxel_x,
+        occlusion.voxel_y,
+        occlusion.voxel_z,
+        dg.upmasks[i],
+        obj_colors[i],
+    )
+    vox_ups.append(voxel4)
     # o3d.visualization.draw_geometries([voxel1, voxel2])
 
 o3d.visualization.draw_geometries(vox_occupied)
+
+dg.draw_graph()
 # o3d.visualization.draw_geometries(vox_occluded)
-o3d.visualization.draw_geometries(vox_revealed)
+# o3d.visualization.draw_geometries(vox_revealed)
+o3d.visualization.draw_geometries(vox_ups)
+
 
 print('obj_poses length: ', len(obj_poses))
 print('occluded_list length: ', len(occluded_list))
