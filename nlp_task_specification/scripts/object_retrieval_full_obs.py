@@ -47,14 +47,17 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     package_path = rp.get_path('vbcpm_execution_system')
     urdf_path = os.path.join(package_path, scene_dict['robot']['urdf'])
     joints = [0.] * 16
-    robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], pid)
+    robot = Robot(
+        urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'],
+        pid
+    )
 
     workspace_low = scene_dict['workspace']['region_low']
     workspace_high = scene_dict['workspace']['region_high']
 
     workspace = Workspace(
-        scene_dict['workspace']['pos'], scene_dict['workspace']['ori'], scene_dict['workspace']['components'],
-        workspace_low, workspace_high, pid
+        scene_dict['workspace']['pos'], scene_dict['workspace']['ori'],
+        scene_dict['workspace']['components'], workspace_low, workspace_high, pid
     )
 
     # camera
@@ -62,20 +65,29 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     resol = np.array([0.01, 0.01, 0.01])
     occlusion = OcclusionScene(
         workspace_high[0] - workspace_low[0], workspace_high[1] - workspace_low[1],
-        workspace_high[2] - workspace_low[2], resol, workspace_low[0], workspace_low[1], workspace_low[2],
-        np.array([1.0, 0., 0.]), np.array([0.0, 1., 0.]), np.array([0.0, 0., 1.])
+        workspace_high[2] - workspace_low[2], resol, workspace_low[0], workspace_low[1],
+        workspace_low[2], np.array([1.0, 0., 0.]), np.array([0.0, 1., 0.]),
+        np.array([0.0, 0., 1.])
     )
 
     n_samples = 12000
     if level == 1:
-        obj_list = ['cube', 'wall', 'cylinder', 'ontop']
+        obj_list = ['cube', 'wall', 'cylinder', 'ontop', 'ontop', 'ontop', 'ontop']
 
-        pcd_cube = np.random.uniform(low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3))
+        pcd_cube = np.random.uniform(
+            low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)
+        )
 
         pcd_cylinder_r = np.random.uniform(low=0, high=0.5, size=n_samples)
-        pcd_cylinder_r = np.random.triangular(left=0., mode=0.5, right=0.5, size=n_samples)
-        pcd_cylinder_xy = np.random.normal(loc=[0., 0.], scale=[1., 1.], size=(n_samples, 2))
-        pcd_cylinder_xy = pcd_cylinder_xy / np.linalg.norm(pcd_cylinder_xy, axis=1).reshape(-1, 1)
+        pcd_cylinder_r = np.random.triangular(
+            left=0., mode=0.5, right=0.5, size=n_samples
+        )
+        pcd_cylinder_xy = np.random.normal(
+            loc=[0., 0.], scale=[1., 1.], size=(n_samples, 2)
+        )
+        pcd_cylinder_xy = pcd_cylinder_xy / np.linalg.norm(
+            pcd_cylinder_xy, axis=1
+        ).reshape(-1, 1)
         pcd_cylinder_xy = pcd_cylinder_xy * pcd_cylinder_r.reshape(-1, 1)
 
         pcd_cylinder_h = np.random.uniform(low=-0.5, high=0.5, size=n_samples)
@@ -119,7 +131,11 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
             if i == 0:
                 color = [1.0, 0., 0., 1]
             else:
-                color = [np.random.uniform(0., .9), np.random.uniform(0., 1.), np.random.uniform(0., 1.), 1]
+                color = [
+                    np.random.uniform(0., .9),
+                    np.random.uniform(0., 1.),
+                    np.random.uniform(0., 1.), 1
+                ]
 
             # scale base object and transform until it satisfies constraints
             while True:
@@ -147,9 +163,13 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     z += obj_tops[prev_ind] + z_size
                 else:
                     x = np.random.uniform(
-                        low=workspace_low[0] + x_size / 2 + x_low_offset, high=workspace_high[0] - x_size / 2
+                        low=workspace_low[0] + x_size / 2 + x_low_offset,
+                        high=workspace_high[0] - x_size / 2
                     )
-                    y = np.random.uniform(low=workspace_low[1] + y_size / 2, high=workspace_high[1] - y_size / 2)
+                    y = np.random.uniform(
+                        low=workspace_low[1] + y_size / 2,
+                        high=workspace_high[1] - y_size / 2
+                    )
                     z = 0.001
                     z += workspace_low[2] + z_size
 
@@ -158,14 +178,24 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                 z -= z_size / 2
 
                 if obj_shape == 'cube' or obj_shape == 'wall' or obj_shape == 'ontop':
-                    cid = p.createCollisionShape(shapeType=p.GEOM_BOX, halfExtents=[x_size / 2, y_size / 2, z_size / 2])
+                    cid = p.createCollisionShape(
+                        shapeType=p.GEOM_BOX,
+                        halfExtents=[x_size / 2, y_size / 2, z_size / 2]
+                    )
                     vid = p.createVisualShape(
-                        shapeType=p.GEOM_BOX, halfExtents=[x_size / 2, y_size / 2, z_size / 2], rgbaColor=color
+                        shapeType=p.GEOM_BOX,
+                        halfExtents=[x_size / 2, y_size / 2, z_size / 2],
+                        rgbaColor=color
                     )
                 elif obj_shape == 'cylinder':
-                    cid = p.createCollisionShape(shapeType=p.GEOM_CYLINDER, height=z_size, radius=x_size / 2)
+                    cid = p.createCollisionShape(
+                        shapeType=p.GEOM_CYLINDER, height=z_size, radius=x_size / 2
+                    )
                     vid = p.createVisualShape(
-                        shapeType=p.GEOM_CYLINDER, length=z_size, radius=x_size / 2, rgbaColor=color
+                        shapeType=p.GEOM_CYLINDER,
+                        length=z_size,
+                        radius=x_size / 2,
+                        rgbaColor=color
                     )
                 bid = p.createMultiBody(
                     baseCollisionShapeIndex=cid,
@@ -176,12 +206,16 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                 # check collision with scene
                 collision = False
                 for comp_name, comp_id in workspace.components.items():
-                    contacts = p.getClosestPoints(bid, comp_id, distance=0., physicsClientId=pid)
+                    contacts = p.getClosestPoints(
+                        bid, comp_id, distance=0., physicsClientId=pid
+                    )
                     if len(contacts):
                         collision = True
                         break
                 for obj_id in obj_ids:
-                    contacts = p.getClosestPoints(bid, obj_id, distance=0., physicsClientId=pid)
+                    contacts = p.getClosestPoints(
+                        bid, obj_id, distance=0., physicsClientId=pid
+                    )
                     if len(contacts):
                         collision = True
                         break
@@ -256,38 +290,50 @@ depth_img[depth_img >= far] = 0.
 depth_img[depth_img <= near] = 0.
 
 # simulated sensing
-# obj_ind = list(range(1, len(obj_poses) + 1))
-# rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
-#     obj_pcds[1:],
-#     obj_pcds[0],
-#     obj_ind[1:],
-#     obj_ind[0],
-# )
+real = True
+if real:
+    obj_ind = list(range(1, len(obj_poses) + 1))
+    rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
+        obj_pcds[1:],
+        obj_pcds[0],
+        obj_ind[1:],
+        obj_ind[0],
+    )
 
-occluded = occlusion.scene_occlusion(depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics'])
+occluded = occlusion.scene_occlusion(
+    depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics']
+)
 occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
-    occluded, camera.info['extrinsics'], camera.info['intrinsics'], obj_poses, obj_pcds
+    occluded,
+    camera.info['extrinsics'],
+    camera.info['intrinsics'],
+    obj_poses,
+    obj_pcds,
+    depth_nn=1
 )
 # intersected, shadow_occupancy = occlusion.shadow_occupancy_single_obj(occlusion_label > 0, None, None, target_pcd)
 
-hidden_objs = set()
-for i in range(len(obj_poses)):
-    obj_i = i + 1
-    obj_i_vox = occupied_label == obj_i
-    obj_i_area = obj_i_vox.sum()
-    for j in range(len(obj_poses)):
-        if i == j:
-            continue
-        obj_j = j + 1
-        occ_j_vox = occlusion_label == obj_j
+# fake perception
+if not real:
+    hidden_objs = set()
+    for i in range(len(obj_poses)):
+        obj_i = i + 1
+        obj_i_vox = occupied_label == obj_i
+        obj_i_vol = obj_i_vox.sum()
+        obj_i_occ_vol = 0
+        for j in range(len(obj_poses)):
+            if i == j:
+                continue
+            obj_j = j + 1
+            occ_j_vox = (occlusion_label == obj_j) | (occupied_label == obj_j)
 
-        print(obj_i, obj_j, (obj_i_vox & occ_j_vox).sum(), obj_i_area, (obj_i_vox & occ_j_vox).sum() / obj_i_area)
-        if (obj_i_vox & occ_j_vox).sum() / obj_i_area > 0.25:
+            obj_i_occ_vol += (obj_i_vox & occ_j_vox).sum()
+        print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
+        if obj_i_occ_vol / obj_i_vol > 0.5:
             hidden_objs.add(obj_i)
-            break
+            obj_poses[obj_i - 1] = None
+    print(hidden_objs)
 
-print(hidden_objs)
-np.save("TEMP.npy", occupied_label)
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
 
 # visualize occupied voxel grid
@@ -320,7 +366,8 @@ for i in range(len(obj_poses)):
         occupied_label == obj_i,
         [0, 0, 0],
     )
-    vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
+    if not real:
+        vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
     voxel4 = visualize_voxel(
         occlusion.voxel_x,
         occlusion.voxel_y,
@@ -332,12 +379,18 @@ for i in range(len(obj_poses)):
     # o3d.visualization.draw_geometries([voxel1, voxel2])
 
 o3d.visualization.draw_geometries(vox_occupied)
+# o3d.visualization.draw_geometries(vox_occluded)
+if not real:
+    o3d.visualization.draw_geometries(vox_revealed)
+# o3d.visualization.draw_geometries(vox_ups)
 
 dg.draw_graph()
-# o3d.visualization.draw_geometries(vox_occluded)
-# o3d.visualization.draw_geometries(vox_revealed)
-o3d.visualization.draw_geometries(vox_ups)
-
+suggestion = int(input())
+dg.update_target_confidence(1, suggestion, 1000)
+dg.draw_graph()
+suggestion = int(input())
+dg.update_target_confidence(1, suggestion, 1000)
+dg.draw_graph()
 
 print('obj_poses length: ', len(obj_poses))
 print('occluded_list length: ', len(occluded_list))
