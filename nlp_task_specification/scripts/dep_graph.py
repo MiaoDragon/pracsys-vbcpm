@@ -104,17 +104,17 @@ class DepGraph():
 
     def draw_graph(self, label="name"):
         # print(self.poses, self.graph.nodes)
-        pos = {
-            # v: self.poses[np.abs(v) - 1][:2, 3] + perturbation(0.005, 0.006)
-            v: self.poses[v - 1][:2, 3] if 0 < v - 1 < len(self.poses) else [0, 0]
-            for v in self.graph.nodes
-        }
-        pos = nx.spring_layout(
+        # pos = {
+        #     # v: self.poses[np.abs(v) - 1][:2, 3] + perturbation(0.005, 0.006)
+        #     v: self.poses[v - 1][:2, 3] if 0 < v - 1 < len(self.poses) else perturbation(0.005,0.01)
+        #     for v in self.graph.nodes
+        # }
+        pos = nx.planar_layout(
             self.graph,
-            k=1 / len(self.graph.nodes),
-            pos=pos,
-            fixed=[v for v, d in self.graph.out_degree if v > 0 and d == 0],
-            iterations=100
+            # k=1 / len(self.graph.nodes),
+            # pos=pos,
+            # fixed=[v for v, d in self.graph.out_degree if v > 0 and d == 0],
+            # iterations=100
         )
         nx.draw(
             self.graph,

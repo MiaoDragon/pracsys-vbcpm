@@ -290,7 +290,7 @@ depth_img[depth_img >= far] = 0.
 depth_img[depth_img <= near] = 0.
 
 # simulated sensing
-real = True
+real = False
 if real:
     obj_ind = list(range(1, len(obj_poses) + 1))
     rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
