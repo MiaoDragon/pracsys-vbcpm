@@ -48,8 +48,10 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     urdf_path = os.path.join(package_path, scene_dict['robot']['urdf'])
     joints = [0.] * 16
     robot = Robot(
-        urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'],
-        pid
+        urdf_path,
+        scene_dict['robot']['pose']['pos'],
+        scene_dict['robot']['pose']['ori'],
+        pid,
     )
 
     workspace_low = scene_dict['workspace']['region_low']
@@ -72,7 +74,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
 
     n_samples = 12000
     if level == 1:
-        obj_list = ['cube', 'wall', 'cylinder', 'ontop', 'ontop', 'ontop', 'ontop']
+        obj_list = ['cube', 'wall', 'cylinder', 'ontop', 'ontop', 'ontop']
 
         pcd_cube = np.random.uniform(
             low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)
@@ -128,14 +130,11 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                 y_scales = np.arange(2.0, 2.5, 0.1) / 10
                 z_scales = np.arange(1.5, 2.0, 0.1) / 10
 
-            if i == 0:
-                color = [1.0, 0., 0., 1]
-            else:
-                color = [
-                    np.random.uniform(0., .9),
-                    np.random.uniform(0., 1.),
-                    np.random.uniform(0., 1.), 1
-                ]
+            # if i == 0:
+            #     color = [1.0, 0., 0., 1]
+            # else:
+            #     color = [*select_color(i), 1]
+            color = [*from_color_map(i, num_objs), 1]
 
             # scale base object and transform until it satisfies constraints
             while True:
@@ -275,6 +274,8 @@ pid, scene_dict, robot, workspace, camera, occlusion, obj_poses, obj_pcds, obj_i
     num_hiding_objs=1,
 )
 
+true_obj_poses = obj_poses.copy()
+
 width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
     width=camera.info['img_size'],
     height=camera.info['img_size'],
@@ -322,17 +323,68 @@ if not real:
         obj_i_vol = obj_i_vox.sum()
         obj_i_occ_vol = 0
         for j in range(len(obj_poses)):
-            if i == j:
-                continue
+            # if i == j:
+            #     continue
             obj_j = j + 1
-            occ_j_vox = (occlusion_label == obj_j) | (occupied_label == obj_j)
+            occ_j_vox = (
+                occlusion_label == obj_j
+            )  #| (occupied_label == -1)  #| (occupied_label == obj_j)
 
             obj_i_occ_vol += (obj_i_vox & occ_j_vox).sum()
         print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
-        if obj_i_occ_vol / obj_i_vol > 0.5:
+        if obj_i_occ_vol / obj_i_vol > 0.9:
             hidden_objs.add(obj_i)
             obj_poses[obj_i - 1] = None
     print(hidden_objs)
+
+# inverse kinematic test
+lowerLimits, upperLimits, jointRanges, restPoses = robot.getJointRanges(
+    includeFixed=False
+)
+
+pose_ind = input("Press Enter Pose Index: ")
+# for i, pose in enumerate(true_obj_poses):
+#     obj_i = i + 1
+while pose_ind != 'q':
+    obj_i = int(pose_ind)
+    i = obj_i - 1
+    shape = p.getCollisionShapeData(obj_ids[i], -1, robot.pybullet_id)[0]
+    if shape[2] == p.GEOM_BOX:
+        h = shape[3][2]
+    elif shape[2] == p.GEOM_CYLINDER:
+        h = shape[3][0]
+    # elif shape[2] == p.GEOM_SPHERE:
+    # elif shape[2] == p.GEOM_CAPSULE:
+    # elif shape[2] == p.GEOM_MESH:
+    # elif shape[2] == p.GEOM_PLACE:
+    pose = true_obj_poses[i]
+    target_pos = pose[:3, 3]
+    # target_pos[2] += h / 4
+    jointPoses = robot.accurateIK(
+        robot.left_gripper_id,
+        target_pos,
+        lowerLimits,
+        upperLimits,
+        jointRanges,
+        restPoses,
+        useNullSpace=True,
+    )
+    robot.setMotors(jointPoses)
+    collisions = set()
+    for j, obj_pid in enumerate(obj_ids):
+        if i == j:
+            continue
+        obj_j = j + 1
+        contacts = p.getClosestPoints(
+            robot.robot_id,
+            obj_pid,
+            distance=0.,
+            physicsClientId=robot.pybullet_id,
+        )
+        if len(contacts):
+            collisions.add(obj_j)
+    print(i, collisions)
+    pose_ind = input("Press Enter Pose Index: ")
 
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
 
@@ -379,17 +431,27 @@ for i in range(len(obj_poses)):
     # o3d.visualization.draw_geometries([voxel1, voxel2])
 
 o3d.visualization.draw_geometries(vox_occupied)
+# o3d.visualization.draw_geometries(
+#     [
+#         visualize_voxel(
+#             occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
+#             occlusion_label == -1, [0, 0, 0]
+#         )
+#     ]
+# )
 # o3d.visualization.draw_geometries(vox_occluded)
 if not real:
     o3d.visualization.draw_geometries(vox_revealed)
 # o3d.visualization.draw_geometries(vox_ups)
 
 dg.draw_graph()
-suggestion = int(input())
-dg.update_target_confidence(1, suggestion, 1000)
-dg.draw_graph()
-suggestion = int(input())
-dg.update_target_confidence(1, suggestion, 1000)
+suggestion = int(input("Suggest region"))
+result = dg.update_target_confidence(1, suggestion, 1000)
+while not result:
+    dg.draw_graph()
+    suggestion = int(input("Suggest region"))
+    result = dg.update_target_confidence(1, suggestion, 1000)
+print("Success!", dg.pick_order(result))
 dg.draw_graph()
 
 print('obj_poses length: ', len(obj_poses))

@@ -24,7 +24,7 @@ class DepGraph():
         self.occupied_label = occupied_label
         self.occlusion_label = occlusion_label
 
-        self.gt_graph = nx.DiGraph()
+        # self.gt_graph = nx.DiGraph()
         self.graph = nx.DiGraph()
 
         self.upmasks = [None] * len(obj_poses)
@@ -85,22 +85,39 @@ class DepGraph():
         for v, n in list(self.graph.nodes(data="name")):
             if v > 0 and n == target:
                 print("Target Visible!")
-                to_return = True
+                to_return = n
             if v < 0 and n == target:
                 self.graph.remove_node(v)
-        if to_return: return
+        if to_return:
+            return to_return
 
         for v, n in list(self.graph.nodes(data="name")):
             if v < 0:
                 new_id = min(self.graph.nodes) - 1
-                self.graph.add_node(new_id, name=target, color=[1, 0, 0])
                 weight = 1
                 if n == suggestion:
                     weight += 1
                 print(estimated_volume, (self.occlusion_label == np.abs(v)).sum())
                 if estimated_volume < (self.occlusion_label == np.abs(v)).sum():
                     weight += 1
-                self.graph.add_edge(new_id, v, etype="in", w=weight)
+
+                # ignore weights and assume suggestion is perfect but only if it fits
+                if n == suggestion and estimated_volume < (self.occlusion_label
+                                                           == np.abs(v)).sum():
+                    self.graph.add_node(new_id, name=target, color=[1, 0, 0])
+                    self.graph.add_edge(new_id, v, etype="in", w=1)
+                    return new_id
+
+                # uncomment to include weight
+                # self.graph.add_node(new_id, name=target, color=[1, 0, 0])
+                # self.graph.add_edge(new_id, v, etype="in", w=weight)
+
+        return False
+
+    def pick_order(self, pick_node):
+        order = nx.dfs_postorder_nodes(self.graph, source=pick_node)
+        ind2name = dict(self.graph.nodes(data="name"))
+        return [ind2name[v] for v in order]
 
     def draw_graph(self, label="name"):
         # print(self.poses, self.graph.nodes)
