@@ -44,17 +44,40 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     package_path = rp.get_path('vbcpm_execution_system')
     urdf_path = os.path.join(package_path,scene_dict['robot']['urdf'])
     joints = [0.] * 16
-    robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], pid)
+
+    ll = [-1.58, \
+        -3.13, -1.90, -2.95, -2.36, -3.13, -1.90, -3.13, \
+        -3.13, -1.90, -2.95, -2.36, -3.13, -1.90, -3.13] +  \
+        [0.0, -0.8757, 0.0, 0.0, -0.8757, 0.0]
+    ### upper limits for null space
+    ul = [1.58, \
+        3.13, 1.90, 2.95, 2.36, 3.13, 1.90, 3.13, \
+        3.13, 1.90, 2.95, 2.36, 3.13, 1.90, 3.13] + \
+        [0.8, 0.0, 0.8757, 0.81, 0.0, 0.8757]
+    ### joint ranges for null space
+    jr = [1.58*2, \
+        6.26, 3.80, 5.90, 4.72, 6.26, 3.80, 6.26, \
+        6.26, 3.80, 5.90, 4.72, 6.26, 3.80, 6.26] + \
+        [0.8, 0.8757, 0.8757, 0.81, 0.8757, 0.8757]
+
+    robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], 
+                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid)
 
 
+    joints = [0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0 ,0.0,  # left (suction)
+            1.75, 0.8, 0.0, -0.66, 0.0, 0.0 ,0.0,  # right
+            ]
+    robot.set_joints(joints)  # 
 
     workspace_low = scene_dict['workspace']['region_low']
     workspace_high = scene_dict['workspace']['region_high']
-    
+    padding = scene_dict['workspace']['padding']
     workspace = Workspace(scene_dict['workspace']['pos'], scene_dict['workspace']['ori'], \
-                            scene_dict['workspace']['components'], workspace_low, workspace_high, \
+                            scene_dict['workspace']['components'], workspace_low, workspace_high, padding, \
                             pid)
-
+    workspace_low = workspace.region_low
+    workspace_high = workspace.region_high
     # camera
     camera = Camera()
 
@@ -127,7 +150,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     bid = p.createMultiBody(baseCollisionShapeIndex=cid, baseVisualShapeIndex=vid, basePosition=[x,y,z], baseOrientation=[0,0,0,1])
                     # check collision with scene
                     collision = False
-                    for comp_name, comp_id in workspace.components.items():
+                    for comp_name, comp_id in workspace.component_id_dict.items():
                         contacts = p.getClosestPoints(bid, comp_id, distance=0.,physicsClientId=pid)
                         if len(contacts):
                             collision = True
@@ -191,7 +214,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     bid = p.createMultiBody(baseCollisionShapeIndex=cid, baseVisualShapeIndex=vid, basePosition=[x,y,z], baseOrientation=[0,0,0,1])
                     # check collision with scene
                     collision = False
-                    for comp_name, comp_id in workspace.components.items():
+                    for comp_name, comp_id in workspace.component_id_dict.items():
                         contacts = p.getClosestPoints(bid, comp_id, distance=0.,physicsClientId=pid)
                         if len(contacts):
                             collision = True
@@ -278,8 +301,10 @@ def test():
     depth_img[depth_img<=near]=0.
 
 
-    workspace_low = scene_dict['workspace']['region_low']
-    workspace_high = scene_dict['workspace']['region_high']
+    # workspace_low = scene_dict['workspace']['region_low']
+    # workspace_high = scene_dict['workspace']['region_high']
+    workspace_low = workspace.region_low
+    workspace_high = workspace.region_high
 
     resol = np.array([0.01,0.01,0.01])
 
@@ -385,7 +410,7 @@ def test():
             p.resetBasePositionAndOrientation(obj_id, [x,y,obj_poses[i][2,3]], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=pid)
 
             collision = False
-            for comp_name, comp_id in workspace.components.items():
+            for comp_name, comp_id in workspace.component_id_dict.items():
                 contacts = p.getClosestPoints(obj_id, comp_id, distance=0.,physicsClientId=pid)
                 if len(contacts):
                     collision = True

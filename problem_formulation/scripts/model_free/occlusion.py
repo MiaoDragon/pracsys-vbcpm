@@ -19,6 +19,7 @@ where the target object might locate. Should we just denote those areas as Unkno
 
 Occlusion is represented in the global voxel grid
 """
+from enum import unique
 import numpy as np
 import cv2
 import open3d as o3d
@@ -274,6 +275,8 @@ class Occlusion():
             cam_transform = np.linalg.inv(camera_extrinsics)
 
             # NOTE: multiple pcds can map to the same depth. We need to use the min value of the depth if this happens
+            if len(pcd) == 0:
+                continue
             transformed_pcd = cam_transform[:3,:3].dot(pcd.T).T + cam_transform[:3,3]
             fx = camera_intrinsics[0][0]
             fy = camera_intrinsics[1][1]
@@ -286,7 +289,14 @@ class Occlusion():
             transformed_pcd = np.floor(transformed_pcd).astype(int)
             max_j = transformed_pcd[:,0].max()+1
             max_i = transformed_pcd[:,1].max()+1
+
+            if max_i <= 0 or max_j <= 0:
+                # not in the camera view
+                continue
+
             unique_indices = np.unique(transformed_pcd, axis=0)
+            unique_valid = (unique_indices[:,0] >= 0) & (unique_indices[:,1] >= 0)
+            unique_indices = unique_indices[unique_valid]
             unique_depths = np.zeros(len(unique_indices))
             for i in range(len(unique_indices)):
                 unique_depths[i] = depth[(transformed_pcd[:,0]==unique_indices[i,0])&(transformed_pcd[:,1]==unique_indices[i,1])].min()
@@ -428,7 +438,91 @@ class Occlusion():
         # cv2.imshow('depth', uncertain_img)
         # cv2.waitKey(0)        
         return sum_uncertainty
-                
+
+    def object_hidden(self, depth_img, seg_img, assoc, seg_id, obj_id, obj):
+        """
+        check if the object is hidden (not reconstructed yet) by others
+        """
+        # determine where there are objects in the segmented img
+        obj_seg_filter = np.zeros(seg_img.shape).astype(bool)
+        for seg_id_, _ in assoc.items():
+            obj_seg_filter[seg_img==seg_id_] = 1
+
+
+        seged_depth_img = np.zeros(depth_img.shape)
+        seged_depth_img[seg_img==seg_id] = depth_img[seg_img==seg_id]
+        # cv2.imshow("seen_obj", seged_depth_img)
+        # cv2.waitKey(0)
+        # obtain indices of the segmented object
+        img_i, img_j = np.indices(seg_img.shape)
+        # check if the neighbor object is hiding this object
+        valid_1 = (img_i-1>=0) & (seg_img==seg_id)
+        # the neighbor object should be 
+        # 1. an object
+        # 2. not the current object
+        filter1 = obj_seg_filter[img_i[valid_1]-1,img_j[valid_1]]
+        filter2 = (seg_img[img_i[valid_1]-1,img_j[valid_1]] != seg_id)
+
+        filter1_img = np.zeros(depth_img.shape)
+        filter1_img[img_i[valid_1]-1, img_j[valid_1]] = (filter1&filter2)
+        # cv2.imshow('filter obj', filter1_img)
+        # cv2.waitKey(0)
+
+
+        depth_filtered = depth_img[img_i[valid_1]-1,img_j[valid_1]][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        if (depth_filtered < seg_obj_depth_filtered).sum() > 0:
+            # this object is hidden
+            if not obj.active:
+                return True
+
+        valid_1 = (img_i+1<seg_img.shape[0]) & (seg_img==seg_id)
+        filter1 = obj_seg_filter[img_i[valid_1]+1,img_j[valid_1]]
+        filter2 = (seg_img[img_i[valid_1]+1,img_j[valid_1]] != seg_id)
+        depth_filtered = depth_img[img_i[valid_1]+1,img_j[valid_1]][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        if (depth_filtered < seg_obj_depth_filtered).sum() > 0:
+            # this object is hidden
+            if not obj.active:
+                return True
+
+        valid_1 = (img_j-1>=0) & (seg_img==seg_id)
+        filter1 = obj_seg_filter[img_i[valid_1],img_j[valid_1]-1]
+        filter2 = (seg_img[img_i[valid_1],img_j[valid_1]-1] != seg_id)
+        depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]-1][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        if (depth_filtered < seg_obj_depth_filtered).sum() > 0:
+            # this object is hidden
+            if not obj.active:
+                return True
+
+        valid_1 = (img_j+1<seg_img.shape[1]) & (seg_img==seg_id)
+        filter1 = obj_seg_filter[img_i[valid_1],img_j[valid_1]+1]
+        filter2 = (seg_img[img_i[valid_1],img_j[valid_1]+1] != seg_id)
+        depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]+1][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        if (depth_filtered < seg_obj_depth_filtered).sum() > 0:
+            # this object is hidden
+            if not obj.active:
+                return True
+        return False    
+
+
+    def sample_pcd(self, mask, n_sample=10):
+        # sample voxels in te mask
+        # obtain sample in one voxel cell
+        grid_sample = np.random.uniform(low=[0,0,0], high=[1,1,1], size=(n_sample, 3))
+        voxel_x = self.voxel_x[mask]
+        voxel_y = self.voxel_y[mask]
+        voxel_z = self.voxel_z[mask]
+
+        total_sample = np.zeros((len(voxel_x), n_sample, 3))
+        total_sample = total_sample + grid_sample
+        total_sample = total_sample + np.array([voxel_x, voxel_y, voxel_z]).T.reshape(len(voxel_x),1,3)
+
+        total_sample = total_sample.reshape(-1, 3) * np.array(self.resol)
+
+        return total_sample
 
 
     def shadow_occupancy_single_obj(self, occluded, camera_extrinsics, camera_intrinsics, obj_pcd):
@@ -482,3 +576,4 @@ class Occlusion():
                         shadow_occupancy[obj_voxel_x+i, obj_voxel_y+j, obj_voxel_z+k] = 1
         # print('invalid number: ', (shadow_occupancy & (~occluded)).astype(int).sum())
         return intersected, shadow_occupancy
+

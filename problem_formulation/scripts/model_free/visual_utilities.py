@@ -46,6 +46,26 @@ def visualize_coordinate_frame_centered(size=1.0, transform=np.eye(4)):
     frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size).transform(transform)
     return frame
 
+def visualize_arrow(scale=1.0, translation=np.zeros(3), direction=np.array([0,0,1.0]), color=[1,0,0]):
+    arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=1*scale, cone_radius=1.5*scale, cylinder_height=5*scale, cone_height=4*scale)
+    z_axis = direction
+    x_axis = np.array([-z_axis[2], 0, z_axis[0]])
+    y_axis = np.cross(z_axis, x_axis)
+    rotation = np.array([x_axis, y_axis, z_axis]).T
+    transform = np.eye(4)
+    transform[:3,:3] = rotation
+    transform[:3,3] = translation
+    arrow.transform(transform)
+    arrow.paint_uniform_color(color)
+    return arrow
+    
+def visualize_mesh(vertices, triangles, color=[1,0,0]):
+    vert = o3d.utility.Vector3dVector(vertices)
+    tria = o3d.utility.Vector3iVector(triangles)
+    mesh = o3d.geometry.TriangleMesh(vert, tria)
+    mesh.paint_uniform_color(color)
+    return mesh
+
 def get_color_picks():
     color_pick = np.zeros((8,3))
     color_pick[0] = np.array([1., 0., 0.])

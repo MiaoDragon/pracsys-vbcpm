@@ -33,6 +33,9 @@ TODO: TSDF has some problems
 import numpy as np
 from visual_utilities import *
 import open3d as o3d
+import pose_generation
+
+DEBUG = True
 
 class ObjectModel():
     def __init__(self, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03):
@@ -75,10 +78,12 @@ class ObjectModel():
         self.scale = scale
         self.max_v = scale#1.0
         self.min_v = -scale#-1.0 
-        self.active = 0  
+        self.active = 0
         # 0 means this object might be hidden by others. 1 means we can safely move the object now
         # we will only expand the object tsdf volume when it's hidden. Once it's active we will keep
         # the tsdf volume fixed
+        self.sensed = 0
+        # sensed means if the object has been completely reconstructed
 
         self.transform = np.zeros((4,4))
         self.transform[:3,0] = self.axis_x
@@ -105,6 +110,9 @@ class ObjectModel():
     def set_active(self):
         # when the object is no longer hidden by others, it can move
         self.active = 1
+
+    def set_sensed(self):
+        self.sensed = 1
     
     def update_transform_from_relative(self, rel_transform):
         # when the object is moved, update the transform
@@ -255,6 +263,9 @@ class ObjectModel():
 
         self.tsdf[self.tsdf_count==0] = 0.0
 
+        # self.get_surface_normal()
+        # suction_disc = np.arange(start=0.0,stop=0.06, step=0.005)[1:]
+        # pose_generation.grasp_pose_generation(self, suction_disc)
 
     def update_tsdf_unhidden(self, depth_img, color_img, camera_extrinsics, camera_intrinsics):
         """
@@ -297,7 +308,10 @@ class ObjectModel():
         # handle valid space
         tsdf = np.zeros(self.tsdf.shape)
         tsdf = (voxel_depth - cam_to_voxel_depth)# * self.scale
-        valid_space = (tsdf > self.min_v) & valid_mask
+
+        # invalid parts: depth==0.
+        # valid and unhidden by others: depth=MAX_DEPTH
+        valid_space = (voxel_depth>0) & (tsdf > self.min_v) & valid_mask
 
         # # visualize the valid space
         # pcd_v = visualize_pcd(self.sample_conservative_pcd()/self.resol, [0,0,0])
@@ -333,10 +347,10 @@ class ObjectModel():
 
         self.tsdf[self.tsdf_count==0] = 0.0
 
+        # self.get_surface_normal()
 
-
-
-
+        # suction_disc = np.arange(start=0.0,stop=0.06, step=0.005)[1:]
+        # pose_generation.grasp_pose_generation(self, suction_disc)
 
     def sample_pcd(self, mask, n_sample=10):
         # sample voxels in te mask
@@ -386,6 +400,69 @@ class ObjectModel():
         net_transform[:3,3] = transform[:3,:3].dot(obj_in_center[:3,3]) + transform[:3,3]
         return net_transform
 
+
+    def get_surface_normal(self):
+        """
+        get surface normal from tsdf
+        """
+        gx, gy, gz = np.gradient(self.tsdf)
+        # visualize the gradient for optimistic volume
+        filter = self.get_optimistic_model()
+        filtered_x = self.voxel_x[filter]
+        filtered_y = self.voxel_y[filter]
+        filtered_z = self.voxel_z[filter]
+        filtered_pts = np.array([filtered_x, filtered_y, filtered_z]).T
+        filtered_g = np.array([gx[filter], gy[filter], gz[filter]]).T
+
+        # use the normal to move back the suction point
+        filtered_pts = filtered_pts + filtered_g * 0.5
+        
+
+        if DEBUG:
+            pcd_v = visualize_pcd(self.sample_pcd(filter)/self.resol, [0,0,0])
+
+            # opt_pcd_v = visualize_pcd(self.sample_optimistic_pcd()/self.resol, [1,1,0])
+            voxel_v = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, filter, [1,0,0])
+
+            # # obtain the camera transform in the voxel space
+            # cam_in_voxel = self.world_in_voxel.dot(camera_extrinsics)
+            # cam_in_voxel[:3,3] = cam_in_voxel[:3,3] / self.resol
+            # cam_in_voxel = visualize_coordinate_frame_centered(size=10, transform=cam_in_voxel)
+            # # cam_in_voxel2 = visualize_coordinate_frame_centered()
+            arrows = []
+            # arrow = o3d.geometry.TriangleMesh.create_arrow()  # arrow points in the z-axis of the coordinate frame
+            # coor = visualize_coordinate_frame_centered()
+            # print('normal direction: ', filtered_g)
+            for i in range(len(filtered_g)):
+                # draw arrows indicating the normal
+                if (np.linalg.norm(filtered_g[i]) <= 1e-5):
+                    continue
+            
+
+                arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=1/10, cone_radius=1.5/10, cylinder_height=5/10, cone_height=4/10)
+                translation = filtered_pts[i]
+                z_axis = filtered_g[i] / np.linalg.norm(filtered_g[i])
+                x_axis = np.array([-z_axis[2], 0, z_axis[0]])
+                y_axis = np.cross(z_axis, x_axis)
+                rotation = np.array([x_axis, y_axis, z_axis]).T
+                transform = np.eye(4)
+                transform[:3,:3] = rotation
+                transform[:3,3] = translation
+                arrow.transform(transform)
+                arrows.append(arrow)
+            o3d.visualization.draw_geometries(arrows+[pcd_v])    
+
+        length = np.linalg.norm(filtered_g,axis=1)
+        filtered_pts = filtered_pts[length>=1e-5]
+        filtered_g = filtered_g[length>=1e-5]
+        filtered_g = filtered_g / np.linalg.norm(filtered_g,axis=1).reshape(-1,1)
+
+        return filtered_pts * self.resol, -filtered_g
+        
+
+
+
+
 def test():
     # test the module
     object = ObjectModel(0.0, 0.0, 0.0, 1.000, 1.000, 1.000, [0.01,0.01,0.01], 0.05)
@@ -400,6 +477,9 @@ def test():
     print(object.xmax, object.ymax, object.zmax)
 
     print(object.tsdf[1:,1:,1].sum())
+    object.tsdf_count += 1
+
+    object.get_surface_normal()
 
 if __name__ == "__main__":
     test()
