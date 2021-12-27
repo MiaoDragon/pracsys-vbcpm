@@ -338,52 +338,56 @@ if not real:
     print(hidden_objs)
 
 # inverse kinematic test
-lowerLimits, upperLimits, jointRanges, restPoses = robot.getJointRanges(
-    includeFixed=False
-)
+# lowerLimits, upperLimits, jointRanges, restPoses = robot.getJointRanges(
+#     includeFixed=False
+# )
+
+# p.setGravity(0, 0, 0)
+# p.setRealTimeSimulation(1)
 
 pose_ind = input("Press Enter Pose Index: ")
 # for i, pose in enumerate(true_obj_poses):
 #     obj_i = i + 1
 while pose_ind != 'q':
-    obj_i = int(pose_ind)
+    obj_i = int(pose_ind[0])
     i = obj_i - 1
-    shape = p.getCollisionShapeData(obj_ids[i], -1, robot.pybullet_id)[0]
-    if shape[2] == p.GEOM_BOX:
-        h = shape[3][2]
-    elif shape[2] == p.GEOM_CYLINDER:
-        h = shape[3][0]
-    # elif shape[2] == p.GEOM_SPHERE:
-    # elif shape[2] == p.GEOM_CAPSULE:
-    # elif shape[2] == p.GEOM_MESH:
-    # elif shape[2] == p.GEOM_PLACE:
-    pose = true_obj_poses[i]
-    target_pos = pose[:3, 3]
-    # target_pos[2] += h / 4
-    jointPoses = robot.accurateIK(
-        robot.left_gripper_id,
-        target_pos,
-        lowerLimits,
-        upperLimits,
-        jointRanges,
-        restPoses,
-        useNullSpace=True,
-    )
-    robot.setMotors(jointPoses)
-    collisions = set()
-    for j, obj_pid in enumerate(obj_ids):
-        if i == j:
-            continue
-        obj_j = j + 1
-        contacts = p.getClosestPoints(
-            robot.robot_id,
-            obj_pid,
-            distance=0.,
-            physicsClientId=robot.pybullet_id,
-        )
-        if len(contacts):
-            collisions.add(obj_j)
-    print(i, collisions)
+    poses = robot.getGrasps(obj_ids[i])
+    filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
+    filteredPoses += robot.filterGrasps(robot.right_gripper_id, poses)
+    # pose_num = int(pose_ind[1]) % len(poses)
+    # target_pos = poses[pose_num][0]
+    # target_rot = poses[pose_num][1]
+    for pose in filteredPoses:
+        # for pose in poses:
+        # target_pos = pose[0]
+        # target_rot = pose[1]
+        # # target_pos[2] += h / 4
+        # jointPoses, dist = robot.accurateik(
+        #     robot.left_gripper_id,
+        #     target_pos,
+        #     target_rot,
+        # )
+        input("Next?")
+        # robot.setMotors(jointPoses)
+        print(pose)
+        # robot.setMotors(pose)
+        # p.stepSimulation()
+        # p.setRealTimeSimulation(0)
+        robot.set_joints(pose)
+        collisions = set()
+        for j, obj_pid in enumerate(obj_ids):
+            if i == j:
+                continue
+            obj_j = j + 1
+            contacts = p.getClosestPoints(
+                robot.robot_id,
+                obj_pid,
+                distance=0.,
+                physicsClientId=robot.pybullet_id,
+            )
+            if len(contacts):
+                collisions.add(obj_j)
+        # print(i, collisions)
     pose_ind = input("Press Enter Pose Index: ")
 
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
