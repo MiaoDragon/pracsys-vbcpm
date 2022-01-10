@@ -350,7 +350,11 @@ pose_ind = input("Press Enter Pose Index: ")
 # for i, pose in enumerate(true_obj_poses):
 #     obj_i = i + 1
 while pose_ind != 'q':
-    obj_i = int(pose_ind[0])
+    try:
+        obj_i = int(pose_ind[0])
+    except IndexError:
+        pose_ind = input("Press Enter Pose Index: ")
+        continue
     i = obj_i - 1
     poses = robot.getGrasps(obj_ids[i])
     filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
