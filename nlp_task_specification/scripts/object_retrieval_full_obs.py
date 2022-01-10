@@ -74,7 +74,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
 
     n_samples = 12000
     if level == 1:
-        obj_list = ['cube', 'wall', 'cylinder', 'ontop', 'ontop', 'ontop']
+        obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
 
         pcd_cube = np.random.uniform(
             low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)
@@ -117,18 +117,22 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                 obj_shape = 'cube'
             # obj_shape = obj_list[i%len(obj_list)]
             # randomly scale the object
-            if obj_shape == 'cube' or obj_shape == 'ontop':
-                x_scales = np.arange(0.4, 0.6, 0.1) / 10
-                y_scales = np.arange(0.4, 0.6, 0.1) / 10
-                z_scales = np.arange(0.5, 0.9, 0.1) / 10
+            if obj_shape == 'cube':
+                x_scales = np.arange(0.25, 0.40, 0.05) / 10
+                y_scales = np.arange(0.25, 0.40, 0.05) / 10
+                z_scales = np.arange(0.5, 1.0, 0.05) / 10
+            elif obj_shape == 'ontop':
+                x_scales = np.arange(0.25, 0.40, 0.05) / 10
+                y_scales = np.arange(0.25, 0.40, 0.05) / 10
+                z_scales = np.arange(0.5, 1.0, 0.05) / 10
             elif obj_shape == 'cylinder':
-                x_scales = np.arange(0.4, 0.7, 0.1) / 10
-                y_scales = np.arange(0.4, 0.7, 0.1) / 10
-                z_scales = np.arange(0.5, 1.5, 0.1) / 10
+                x_scales = np.arange(0.25, 0.40, 0.05) / 10
+                y_scales = np.arange(0.25, 0.40, 0.05) / 10
+                z_scales = np.arange(0.5, 1.5, 0.05) / 10
             elif obj_shape == 'wall':
-                x_scales = np.arange(0.4, 0.5, 0.1) / 10
-                y_scales = np.arange(2.0, 2.5, 0.1) / 10
-                z_scales = np.arange(1.5, 2.0, 0.1) / 10
+                x_scales = np.arange(0.25, 0.40, 0.05) / 10
+                y_scales = np.arange(2.0, 2.5, 0.05) / 10
+                z_scales = np.arange(1.5, 2.0, 0.05) / 10
 
             # if i == 0:
             #     color = [1.0, 0., 0., 1]
@@ -337,11 +341,8 @@ if not real:
             obj_poses[obj_i - 1] = None
     print(hidden_objs)
 
-# inverse kinematic test
-# lowerLimits, upperLimits, jointRanges, restPoses = robot.getJointRanges(
-#     includeFixed=False
-# )
-
+robot.set_gripper('left', 'open')
+robot.set_gripper('right', 'open')
 # p.setGravity(0, 0, 0)
 # p.setRealTimeSimulation(1)
 
@@ -354,40 +355,17 @@ while pose_ind != 'q':
     poses = robot.getGrasps(obj_ids[i])
     filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
     filteredPoses += robot.filterGrasps(robot.right_gripper_id, poses)
-    # pose_num = int(pose_ind[1]) % len(poses)
-    # target_pos = poses[pose_num][0]
-    # target_rot = poses[pose_num][1]
-    for pose in filteredPoses:
-        # for pose in poses:
-        # target_pos = pose[0]
-        # target_rot = pose[1]
-        # # target_pos[2] += h / 4
-        # jointPoses, dist = robot.accurateik(
-        #     robot.left_gripper_id,
-        #     target_pos,
-        #     target_rot,
-        # )
+
+    print(obj_ids)
+    for pose, cols in filteredPoses:
         input("Next?")
         # robot.setMotors(jointPoses)
-        print(pose)
+        # print(pose)
         # robot.setMotors(pose)
         # p.stepSimulation()
         # p.setRealTimeSimulation(0)
         robot.set_joints(pose)
-        collisions = set()
-        for j, obj_pid in enumerate(obj_ids):
-            if i == j:
-                continue
-            obj_j = j + 1
-            contacts = p.getClosestPoints(
-                robot.robot_id,
-                obj_pid,
-                distance=0.,
-                physicsClientId=robot.pybullet_id,
-            )
-            if len(contacts):
-                collisions.add(obj_j)
-        # print(i, collisions)
+        print(i + 1, [obj_ids.index(x) + 1 for x in cols])
     pose_ind = input("Press Enter Pose Index: ")
 
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)

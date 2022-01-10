@@ -6,6 +6,7 @@ import pybullet as p
 
 
 class Robot():
+
     def __init__(self, urdf, pos, ori, pybullet_id):
         """
         given the URDF file, the pose of the robot base, and the joint angles,
@@ -37,7 +38,11 @@ class Robot():
         self.pybullet_id = pybullet_id
 
         self.right_gripper_id = 26
+        self.right_fingers = [27, 29]
+        self.right_flim = p.getJointInfo(self.robot_id, self.right_fingers[0])[8:10]
         self.left_gripper_id = 48
+        self.left_fingers = [49, 51]
+        self.left_flim = p.getJointInfo(self.robot_id, self.left_fingers[0])[8:10]
 
         self.lowerLimits, self.upperLimits, self.jointRanges, self.restPoses = self.getJointRanges(
             includeFixed=False
@@ -47,6 +52,39 @@ class Robot():
         for i in range(self.num_joints):
             p.resetJointState(
                 self.robot_id, i, joints[i], 0, physicsClientId=self.pybullet_id
+            )
+
+    def set_gripper(self, gripper, state='open'):
+        ind = 0 if state == 'closed' else 1
+        if gripper == 'left' or gripper == self.left_gripper_id:
+            p.resetJointState(
+                self.robot_id,
+                self.left_fingers[0],
+                self.left_flim[ind],
+                0,
+                physicsClientId=self.pybullet_id
+            )
+            p.resetJointState(
+                self.robot_id,
+                self.left_fingers[1],
+                -self.left_flim[ind],
+                0,
+                physicsClientId=self.pybullet_id
+            )
+        elif gripper == 'right' or gripper == self.right_gripper_id:
+            p.resetJointState(
+                self.robot_id,
+                self.right_fingers[0],
+                self.right_flim[ind],
+                0,
+                physicsClientId=self.pybullet_id
+            )
+            p.resetJointState(
+                self.robot_id,
+                self.right_fingers[1],
+                -self.right_flim[ind],
+                0,
+                physicsClientId=self.pybullet_id
             )
 
     def getJointRanges(self, includeFixed=False):
@@ -181,7 +219,7 @@ class Robot():
 
         for i in range(self.num_joints):
             jointInfo = p.getJointInfo(self.robot_id, i, physicsClientId=self.pybullet_id)
-            print(jointInfo)
+            # print(jointInfo)
             qIndex = jointInfo[3]
             if qIndex > -1:
                 p.setJointMotorControl2(
@@ -192,10 +230,12 @@ class Robot():
                     physicsClientId=self.pybullet_id
                 )
 
-    def getGrasps(self, object_id, resolution=9):
+    def getGrasps(self, object_id, resolution=8):
         """
-        resolution must be odd
+        resolution must be even
         """
+        shape = p.getCollisionShapeData(object_id, -1, self.pybullet_id)[0]
+        res = 5 if shape[2] == p.GEOM_BOX else resolution + 1
 
         # grasp orientations
         # vertical
@@ -203,16 +243,16 @@ class Robot():
         x = 0
         y = np.pi
         # rotate along gripper axis:
-        for z in np.linspace(-np.pi, np.pi, resolution):
+        for z in np.linspace(-np.pi, np.pi, res):
             vert.append(p.getQuaternionFromEuler((x, y, z)))
 
         # horizontal
         horz = []
-        y = np.pi / 2
+        x = -np.pi / 2
         # rotate along gripper axis:
-        for x in np.linspace(-np.pi, np.pi, resolution):
+        for y in np.linspace(-np.pi, np.pi, res):
             # rotate along horizontal axis:
-            for z in np.linspace(-np.pi / 2, np.pi / 2, resolution):
+            for z in np.linspace(-np.pi, 0, (res // 2) + 1):
                 horz.append(p.getQuaternionFromEuler((x, y, z)))
 
         # object position and orientation
@@ -220,19 +260,49 @@ class Robot():
 
         # positions along shape
         grasps = []
-        shape = p.getCollisionShapeData(object_id, -1, self.pybullet_id)[0]
         if shape[2] == p.GEOM_BOX:
             sx, sy, sz = shape[3]
-            top = [0, 0, sz / 2]
-            left = [0, -sy / 2, 0]
-            right = [0, sy / 2, 0]
-            # front = [-sx/2,0,0]
-            grasps = [
-                [left, horz[0]], [right, horz[-1]], [top, vert[(resolution - 1) // 2]]
-            ]
+
+            gw = self.right_flim[1] * 2  # gripper width
+
+            def nearOdd(n):
+                return round((n - 1) / 2) * 2 + 1
+
+            # top = [0, 0, sz / 2]
+            # left = [0, -sy / 2, 0]
+            # right = [0, sy / 2, 0]
+            # front = [-sx / 2, 0, 0]
+            if sx < gw:
+                noz = nearOdd(sz / gw)
+                for z in np.linspace(-(noz - 1) / (2 * noz), (noz - 1) / (2 * noz), noz):
+                    grasps.append([[0, sy / 2, z * sz], horz[3]])  # right
+                    grasps.append([[0, sy / 2, z * sz], horz[9]])  # right
+                    grasps.append([[0, -sy / 2, z * sz], horz[5]])  # left
+                    grasps.append([[0, -sy / 2, z * sz], horz[11]])  # left
+                noy = nearOdd(sy / gw)
+                for y in np.linspace(-(noy - 1) / (2 * noy), (noy - 1) / (2 * noy), noy):
+                    grasps.append([[0, y * sy, sz / 2], vert[1]])  # top
+                    grasps.append([[0, y * sy, sz / 2], vert[3]])  # top
+            if sy < gw:
+                noz = nearOdd(sz / gw)
+                for z in np.linspace(-(noz - 1) / (2 * noz), (noz - 1) / (2 * noz), noz):
+                    grasps.append([[-sx / 2, 0, z * sz], horz[4]])  # front
+                    grasps.append([[-sx / 2, 0, z * sz], horz[10]])  # front
+                nox = nearOdd(sx / gw)
+                for x in np.linspace(-(nox - 1) / (2 * nox), (nox - 1) / (2 * nox), nox):
+                    grasps.append([[x * sx, 0, sz / 2], vert[0]])  # top
+                    grasps.append([[x * sx, 0, sz / 2], vert[2]])  # top
         elif shape[2] == p.GEOM_CYLINDER or shape[2] == p.GEOM_CAPSULE:
             h, r = shape[3][:2]
-            grasps = [[(0, 0, 0), o] for o in vert + horz]
+            grasps += [[(0, 0, 0), o] for o in vert]
+            grasps += [
+                [(0, 0, 0), o]
+                for o in horz[res * ((res - 1) // 4):res * ((res + 3) // 4)]
+            ]
+            grasps += [
+                [(0, 0, 0), o]
+                for o in horz[res * ((-res - 1) // 4):res * ((-res + 3) // 4)]
+            ]
         elif shape[2] == p.GEOM_SPHERE:
             r = shape[3][0]
             grasps = [[(0, 0, 0), o] for o in vert + horz]
@@ -253,6 +323,7 @@ class Robot():
         self,
         endEffectorId,
         grasps,
+        collision_ignored=[],
         stopThreshold=1e-3,
         filterThreshold=1e-02,
     ):
@@ -269,14 +340,33 @@ class Robot():
                 rot,
                 threshold=stopThreshold,
             )
-            input(dist)
-            if dist < filterThreshold:
+            # input(rot)
+            if dist < filterThreshold:  # filter by succesful IK
+                self.set_gripper(endEffectorId, 'open')
                 joint_states = [
                     x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))
                 ]
                 # filteredJointPoses.append(jointPoses)
-                filteredJointPoses.append(joint_states)
+
+                ignore_ids = collision_ignored + [self.robot_id]
+                collisions = set()
+                for i in range(p.getNumBodies(physicsClientId=self.pybullet_id)):
+                    obj_pid = p.getBodyUniqueId(i, physicsClientId=self.pybullet_id)
+                    if obj_pid in ignore_ids:
+                        continue
+                    contacts = p.getClosestPoints(
+                        self.robot_id,
+                        obj_pid,
+                        distance=0.,
+                        physicsClientId=self.pybullet_id,
+                    )
+                    if len(contacts):
+                        collisions.add(obj_pid)
+                if 1 not in collisions:  # dont add if collides with table
+                    filteredJointPoses.append((joint_states, collisions, dist))
 
         self.set_joints(init_states)
 
-        return filteredJointPoses
+        # return pose and collisions in sorted order
+        filteredJointPoses = sorted(filteredJointPoses, key=lambda x: (len(x[1]), x[2]))
+        return [x[0:2] for x in filteredJointPoses]
