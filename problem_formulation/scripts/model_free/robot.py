@@ -142,9 +142,18 @@ class Robot():
         self.motion_planner = motion_planner
 
     def set_joints_without_memorize(self, joints):
-        for i in range(len(self.joint_indices)):
-            joint_idx = self.joint_indices[i]
-            p.resetJointState(self.robot_id, joint_idx, joints[i], 0., self.pybullet_id)
+        if isinstance(joints, dict):
+            # dict
+            for i in range(len(self.joint_indices)):
+                joint_idx = self.joint_indices[i]
+                joint_name = self.joint_names[i]
+                if joint_name in joints:
+                    p.resetJointState(self.robot_id, joint_idx, joints[joint_name], 0., self.pybullet_id)
+        else:
+            # list or numpy array
+            for i in range(len(self.joint_indices)):
+                joint_idx = self.joint_indices[i]
+                p.resetJointState(self.robot_id, joint_idx, joints[i], 0., self.pybullet_id)
 
 
     def set_joints(self, joints):
@@ -190,13 +199,20 @@ class Robot():
         transform[:3,3] = pos
         return transform
 
-    def get_tip_link_pose(self):
+    def get_tip_link_pose(self, joints=None):
+        if joints is not None:
+            self.set_joints_without_memorize(joints)
+
         link_idx = self.total_link_name_ind_dict[self.tip_link_name]
         link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
         pos = link_state[4]
         ori = link_state[5] # x y z w
         transform = tf.transformations.quaternion_matrix([ori[3], ori[0], ori[1], ori[2]])
         transform[:3,3] = pos
+
+        if joints is not None:
+            # reset
+            self.set_joints_without_memorize(self.joint_dict)
         return transform
 
     def set_suction_length(self, suction_length=0.3015):

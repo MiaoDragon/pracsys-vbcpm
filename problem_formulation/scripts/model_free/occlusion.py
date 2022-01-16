@@ -204,6 +204,7 @@ class Occlusion():
         occluded = np.array(occluded).astype(bool)  # make a copy
         occlusion_label = np.zeros(occluded.shape).astype(int)  # 0: free space, id: occluded by id, -1: unknown
         occupied_label = np.zeros(occluded.shape).astype(int)  # id: occupied by id
+        occupied_dict = {}
         occluded_dict = {}
         depth_nn_steps = []
         # for i in range(depth_nn):
@@ -243,6 +244,7 @@ class Occlusion():
             R = obj_pose[:3,:3]
             T = obj_pose[:3,3]
             pcd = R.dot(obj_pcd.T).T + T
+
             # ** filter out the voxels that correspond to object occupied space
             # map the pcd to voxel space
             transformed_pcds = self.world_in_voxel_rot.dot(pcd.T).T + self.world_in_voxel_tran
@@ -261,10 +263,13 @@ class Occlusion():
             occupied[indices[:,0],indices[:,1],indices[:,2]] = 1
             # occupied = occluded & occupied  # occupied shouldn't concern occlusion
             occupied_label[occupied==1] = obj_id+1
+            occupied_dict[obj_id] = occupied
 
 
         # Step 2: determine occlusion label: using pcd for depth image (TODO: try opt or conservative)
         for obj_id, obj_pose in obj_poses.items():
+            occluded_dict[obj_id] = np.zeros(occluded.shape).astype(bool)  # initialize
+
             obj_pcd = obj_opt_pcds[obj_id]
             R = obj_pose[:3,:3]
             T = obj_pose[:3,3]
@@ -322,7 +327,7 @@ class Occlusion():
 
         # the rest of the space is unknown space
         occlusion_label[(occlusion_label==0)&(occluded==1)] = -1
-        return occlusion_label, occupied_label, occluded_dict
+        return occlusion_label, occupied_label, occluded_dict, occupied_dict
 
     def obtain_object_occupancy(self, camera_extrinsics, camera_intrinsics, obj_poses, obj_pcds, depth_nn=1):
         occupied_dict = {}
@@ -391,6 +396,8 @@ class Occlusion():
         max_j = transformed_voxel_indices[:,0].max()+1
         max_i = transformed_voxel_indices[:,1].max()+1
         uncertain_img = np.zeros((max_i, max_j)).astype(float)
+        # TODO: if the uncertaintry shape is too large, then directly return 0
+
 
         # give the number of pixels that corespond to uncertainty
         sum_uncertainty = 0
@@ -515,6 +522,7 @@ class Occlusion():
         voxel_x = self.voxel_x[mask]
         voxel_y = self.voxel_y[mask]
         voxel_z = self.voxel_z[mask]
+
 
         total_sample = np.zeros((len(voxel_x), n_sample, 3))
         total_sample = total_sample + grid_sample

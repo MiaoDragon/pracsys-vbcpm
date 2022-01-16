@@ -39,6 +39,11 @@ class SLAMPerception():
         Occlusion:
         use the new reconstructed object model, get new occlusion of the scene
         """
+
+        for cid in workspace_ids:
+            depth_img[seg_img==cid] = 0  # workspace
+        depth_img[seg_img==-1] = 0  # background
+
         total_occluded = self.occlusion.scene_occlusion(depth_img, color_img, camera_extrinsics, camera_intrinsics)
 
         # generate valid objects: objects that are not hidden by others
@@ -53,18 +58,38 @@ class SLAMPerception():
 
             # UPDATE: the background needs to be set with depth value FAR
             seg_depth_img = np.array(depth_img)
-            # seg_depth_img[seg_img!=seg_id] = 0  # including objects and robot
+            # seg_depth_img[seg_img!=seg_id] = 0  # including other objects and robot
+            # # handle background, workspace
             seg_depth_img[seg_depth_img==0] = camera_far  # TODO: might use the actual depth?
             for cid in workspace_ids:
                 seg_depth_img[seg_img==cid] = camera_far  # workspace
                 seg_depth_img[seg_img==-1] = camera_far  # background
+            # # handle robot
+            # # handle other object (objects that are hiding this one will be 0, and the reset will be camera_far)
+            # seg_depth_img[seg_img!=seg_id] = camera_far
+            for rid in robot_ids:
+                seg_depth_img[seg_img==rid] = 0
+
+            for seg_id_, obj_id_ in assoc.items():
+                if obj_id_ == obj_id:
+                    continue
+                seg_depth_img[seg_img==seg_id_] = camera_far            
+
+            # NOTE: problem. When the object that is being grasped is hiding the object behind,
+            # this will cause the object to be seen-through
+            # Added condition check to see whether the object is hidden by others
+            obj_hide_set = obj_hide_sets[obj_id]
+            for i in range(len(obj_hide_set)):
+                seg_depth_img[seg_img==obj_hide_set[i]] = 0
 
 
             seg_color_img = np.array(color_img)
             seg_color_img[seg_img!=seg_id,:] = 0
-            occluded = self.occlusion.scene_occlusion(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
+
             # cv2.imshow('segmented depth', seg_depth_img)
             # cv2.waitKey(0)
+
+            occluded = self.occlusion.scene_occlusion(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
 
             if (not (obj_id in self.objects)) or ((not self.objects[obj_id].active) and (not obj_id in valid_objects)):
                 # compute bounding box for the conservative region
@@ -105,7 +130,10 @@ class SLAMPerception():
                 self.obj_initial_poses[obj_id] = new_object.transform
             
             if obj_id in valid_objects:
+                if not self.objects[obj_id].active:
+                    print('object ', obj_id, ' becomes active')
                 self.objects[obj_id].set_active()
+                
 
             # expand the model if inactive
             if not self.objects[obj_id].active:
@@ -116,18 +144,18 @@ class SLAMPerception():
             # TODO: hidden relationship should return the objects that hide each of the object seen
             # we can then use this to label the depth for the hiding object as 0, and the rest as infty
 
-            print('valid_objects: ', valid_objects)
+            # print('valid_objects: ', valid_objects)
 
             # use the hiding set to set the segmented depth image
             # for all the ids that are not hiding the object, set the depth to camera_far
             # for the ids that are hiding the object, set depth to 0 (invalid)
 
             # first set all the potential objects to be camera_far
-            seg_depth_img[seg_img!=seg_id] = camera_far
 
-            obj_hide_set = obj_hide_sets[obj_id]
-            for i in range(len(obj_hide_set)):
-                seg_depth_img[seg_img==obj_hide_set] = 0
+            # seg_depth_img[seg_img!=seg_id] = camera_far
+            # obj_hide_set = obj_hide_sets[obj_id]
+            # for i in range(len(obj_hide_set)):
+            #     seg_depth_img[seg_img==obj_hide_set] = 0
             
 
 
@@ -159,8 +187,7 @@ class SLAMPerception():
             obj_pcds[obj_id] = pcd
             obj_opt_pcds[obj_id] = opt_pcd
         # label the occlusion
-        occlusion_label, occupied_label, occluded_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_pcds, obj_opt_pcds)
-
+        occlusion_label, occupied_label, occluded_dict, occupied_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_pcds, obj_opt_pcds)
 
 
         # record new depth image
@@ -177,19 +204,22 @@ class SLAMPerception():
         self.occluded_t = occluded
         self.occlusion_label_t = occlusion_label
         self.occupied_label_t = occupied_label
+        self.occupied_dict_t = occupied_dict
         self.occluded_dict_t = occluded_dict
 
-        if self.filtered_occluded is not None:
-            voxel_env = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,self.filtered_occluded,[0,0,0])
-        color_pick = np.zeros((8,3))
-        color_pick[0] = np.array([1., 0., 0.])
-        color_pick[1] = np.array([0., 1.0, 0.])
-        color_pick[2] = np.array([0., 0., 1.])
-        color_pick[3] = np.array([252/255, 169/255, 3/255])
-        color_pick[4] = np.array([252/255, 3/255, 252/255])
-        color_pick[5] = np.array([20/255, 73/255, 82/255])
-        color_pick[6] = np.array([22/255, 20/255, 82/255])
-        color_pick[7] = np.array([60/255, 73/255, 10/255])
+
+        if LOG:
+            if self.filtered_occluded is not None:
+                voxel_env = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,self.filtered_occluded,[0,0,0])
+            color_pick = np.zeros((8,3))
+            color_pick[0] = np.array([1., 0., 0.])
+            color_pick[1] = np.array([0., 1.0, 0.])
+            color_pick[2] = np.array([0., 0., 1.])
+            color_pick[3] = np.array([252/255, 169/255, 3/255])
+            color_pick[4] = np.array([252/255, 3/255, 252/255])
+            color_pick[5] = np.array([20/255, 73/255, 82/255])
+            color_pick[6] = np.array([22/255, 20/255, 82/255])
+            color_pick[7] = np.array([60/255, 73/255, 10/255])
 
 
         opt_occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_opt_pcds)
@@ -254,6 +284,9 @@ class SLAMPerception():
         """
         since we remove each object and sense at each time, recording the list of past sensed depth images
         is not necessary. We just need to keep track of the intersection of occlusion to represent it
+
+        A complete approach is to keep track of the list of past sensed depth images and get occlusion for each
+        of them and then obtain the intersection
         """
         obj_poses = {}
         obj_opt_pcds = {}
@@ -269,10 +302,41 @@ class SLAMPerception():
         for i in range(len(self.sensed_imgs)):
             depth_img = self.sensed_imgs[i]
             occluded = self.occlusion.scene_occlusion(depth_img, None, camera_extrinsics, camera_intrinsics)
-
+    
             for obj_id, obj_pose in self.sensed_poses[i].items():
                 obj_poses[obj_id] = obj_pose
-            occlusion_label, occupied_label, occluded_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
+            occlusion_label, occupied_label, occluded_dict, occupied_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
+
+
+            if LOG:
+                vis_voxels = []
+                vis_occupied_voxels = []
+
+                input('drawing from slam filter...')
+                vis_voxel = visualize_voxel(self.occlusion.voxel_x, self.occlusion.voxel_y, self.occlusion.voxel_z,
+                                            occluded, [1,0,0])
+                o3d.visualization.draw_geometries([vis_voxel])
+                
+                for obj_id, obj in occluded_dict.items():
+                    # if id == move_obj_idx:
+                    #     continue
+                    # should include occlusion induced by this object
+                    if occluded_dict[obj_id].sum() > 0:
+                        vis_voxel = visualize_voxel(self.occlusion.voxel_x, 
+                                                    self.occlusion.voxel_y,
+                                                    self.occlusion.voxel_z,
+                                                    occluded_dict[obj_id], [1,0,0])
+                        vis_voxels.append(vis_voxel)
+                    if occupied_dict[obj_id].sum() > 0:
+                        vis_occupied_voxel = visualize_voxel(self.occlusion.voxel_x, 
+                                                            self.occlusion.voxel_y,
+                                                            self.occlusion.voxel_z, 
+                                                            occupied_dict[obj_id], [1,0,0])
+                        vis_occupied_voxels.append(vis_occupied_voxel)            
+                o3d.visualization.draw_geometries(vis_voxels)
+                o3d.visualization.draw_geometries(vis_occupied_voxels)
+
+        
 
             occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds)
             opt_occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_opt_pcds)
@@ -309,9 +373,9 @@ class SLAMPerception():
                 obj.tsdf_count[ori_pcd[valid_mask][occupied_mask][:,0],ori_pcd[valid_mask][occupied_mask][:,1],ori_pcd[valid_mask][occupied_mask][:,2]] += 10
             
             if net_occluded is None:
-                net_occluded = occlusion_label > 0
+                net_occluded = occlusion_label != 0 #occlusion_label > 0
             else:
-                net_occluded = net_occluded & (occlusion_label>0)
+                net_occluded = net_occluded & (occlusion_label!=0)#(occlusion_label>0)
         
         # obtain occlusion for each of the object
         new_occlusion_label = np.zeros(occlusion_label.shape).astype(int)
@@ -343,7 +407,7 @@ class SLAMPerception():
 
             for obj_id, obj_pose in self.sensed_poses[i].items():
                 obj_poses[obj_id] = obj_pose
-            occlusion_label, occupied_label, occluded_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
+            occlusion_label, occupied_label, occluded_dict, occupied_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
 
             # we can use occupied space to refine the reconstruction
             # if the object pcd lies in the optimistic occupied space, then set it to be free
@@ -418,7 +482,7 @@ class SLAMPerception():
             for obj_id, obj in self.objects.items():
                 if not LOG:
                     break
-                print('obj_id: ', obj_id)
+                # print('obj_id: ', obj_id)
                 if obj_poses[obj_id][0,3] < -5:
                     continue  # out of boundary
 

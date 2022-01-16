@@ -16,7 +16,7 @@ import transformations as tf
 import cv2
 import pose_generation
 import pybullet as p
-import collision as collision_utils
+import collision_utils
 class ProbPlanner():
     def __init__(self):
         pass

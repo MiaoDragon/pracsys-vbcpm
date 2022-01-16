@@ -19,7 +19,7 @@ from geometry_msgs.msg import PoseStamped, Point
 import transformations as tf
 from std_srvs.srv import Empty
 
-from moveit_msgs.msg import RobotState
+from moveit_msgs.msg import RobotState, DisplayRobotState
 from sensor_msgs.msg import JointState
 import sys
 
@@ -54,6 +54,7 @@ class MotionPlanner():
 
         self.co_pub = rospy.Publisher('/collision_object', CollisionObject, queue_size=100, latch=True)
 
+        self.rs_pub = rospy.Publisher('/display_robot_state', DisplayRobotState, queue_size=100, latch=True)
         # set up workspace collision
         components = workspace.components
         for component_name, component in components.items():
@@ -99,6 +100,30 @@ class MotionPlanner():
     
     def wait(self, time):
         rospy.sleep(time)
+
+    def set_collision_env_with_filter(self, occlusion, col_filter):
+        # pcd -> octomap
+        # clear environment first
+        self.clear_octomap()
+        rospy.sleep(2.0)
+
+        # collision_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
+        #                                  occluded | occupied, [1,0,0])
+        # o3d.visualization.draw_geometries([collision_voxel])
+        # * generate point cloud for occlusion space
+        total_pcd = occlusion.sample_pcd(col_filter)
+        # occupied_pcd = occlusion.sample_pcd(occupied)
+        total_pcd = occlusion.transform[:3,:3].dot(total_pcd.T).T + occlusion.transform[:3,3]
+        total_pcd = self.robot.world_in_robot[:3,:3].dot(total_pcd.T).T + self.robot.world_in_robot[:3,3]
+        # publish the pcd to the rostopic of sensor
+        header = std_msgs.msg.Header()
+        header.frame_id = 'base'  # use robot base as frame
+        pcd_msg = pcl2.create_cloud_xyz32(header, total_pcd)
+        # while True:
+        self.pcd_pub.publish(pcd_msg)
+        rospy.sleep(1.0)
+        input('after publish...')
+
 
     def set_collision_env(self, occlusion, occluded, occupied):
         # pcd -> octomap
@@ -220,24 +245,31 @@ class MotionPlanner():
         # concatenate the two list to return
         return pre_suction_joint_dict_list + suction_joint_dict_list
 
-    def suction_with_obj_plan(self, start_joint_dict, target_tip_pose, target_joint_val, robot, 
+    def suction_with_obj_plan(self, start_joint_dict, tip_pose_in_obj, target_joint_val, robot, 
                                 obj_idx, objects):
         """
         suction with the object attached to the robot
         create the object mesh from its point cloud or voxel info
         attach the mesh to the robot when doing motion planning
         """
+
+        # get the object pose at start
+        start_tip_pose = robot.get_tip_link_pose(start_joint_dict)
+        obj_transform = start_tip_pose.dot(np.linalg.inv(tip_pose_in_obj))
+
         self.scene_interface.remove_world_object('suction_object')
         rospy.sleep(1.0)
         # obj_pcd = objects[obj_idx].sample_conservative_pcd()
         # obj_pcd = objects[obj_idx].transform[:3,:3].dot(obj_pcd.T).T + objects[obj_idx].transform[:3,3]
         mesh_vertices, mesh_faces = self.create_mesh_from_voxel(objects[obj_idx].get_conservative_model(), objects[obj_idx])
-        co = self.add_mesh_from_vertices_and_faces(mesh_vertices, mesh_faces, objects[obj_idx].transform, 'suction_object')
+        co = self.add_mesh_from_vertices_and_faces(mesh_vertices, mesh_faces, obj_transform, 'suction_object')
         # attach the added mesh to robot link
         touch_links = ['motoman_left_ee', 'arm_left_link_tool0', 'motoman_left_hand']
         aco = self.attach_object(co, robot.tip_link_name, touch_links)
         # self.move_group.attach_object('suction_object', robot.tip_link_name)
         rospy.sleep(1.0)
+
+
         # plan a trajectory from start joint to target joint
 
         goal_joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, [target_joint_val])
@@ -253,10 +285,13 @@ class MotionPlanner():
         joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
         suction_joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
 
-        # self.move_group.detach_object('suction_object')
-        rospy.sleep(1.0)
-
         return suction_joint_dict_list
+
+    def joint_dict_motion_plan(self, start_joint_dict, goal_joint_dict, robot):
+        plan = self.motion_plan_joint(start_joint_dict, goal_joint_dict, robot, [])
+        joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
+        joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
+        return joint_dict_list
 
 
     def motion_plan_joint(self, start_joint_dict, goal_joint_dict, robot, attached_acos=[]):
@@ -330,6 +365,12 @@ class MotionPlanner():
                 joint_vals.append(prev_joint)
         joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, joint_vals)        
         return joint_dict_list
+
+    def display_robot_state(self, state, group_name='robot_arm'):
+        msg = DisplayRobotState()
+        msg.state = state
+        self.rs_pub.publish(msg)
+        rospy.sleep(1.0)
 
 
     def get_state_validity(self, state, group_name="robot_arm"):
@@ -447,6 +488,8 @@ class MotionPlanner():
         co.meshes = [mesh]
 
         pose = Pose()
+        print('transform: ')
+        print(transform)
         quat = tf.quaternion_from_matrix(transform)  # w x y z
         pose.position.x = transform[0,3]
         pose.position.y = transform[1,3]

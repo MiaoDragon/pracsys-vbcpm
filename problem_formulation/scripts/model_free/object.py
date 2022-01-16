@@ -35,7 +35,7 @@ from visual_utilities import *
 import open3d as o3d
 import pose_generation
 
-DEBUG = True
+DEBUG = False
 
 class ObjectModel():
     def __init__(self, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03):
