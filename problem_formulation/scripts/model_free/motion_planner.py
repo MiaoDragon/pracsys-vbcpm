@@ -29,6 +29,9 @@ import open3d as o3d
 from geometry_msgs.msg import Pose, Point
 from shape_msgs.msg import SolidPrimitive, Plane, Mesh, MeshTriangle
 
+from memory_profiler import profile
+
+
 class MotionPlanner():
     def __init__(self, robot, workspace, commander_args=[]):
         # set up the scene
@@ -122,7 +125,9 @@ class MotionPlanner():
         # while True:
         self.pcd_pub.publish(pcd_msg)
         rospy.sleep(1.0)
-        input('after publish...')
+        # input('after publish...')
+        del total_pcd
+        del pcd_msg
 
 
     def set_collision_env(self, occlusion, occluded, occupied):
@@ -149,7 +154,11 @@ class MotionPlanner():
         # while True:
         self.pcd_pub.publish(pcd_msg)
         rospy.sleep(1.0)
-        input('after publish...')
+        # input('after publish...')
+        del total_pcd
+        del occupied_pcd
+        del occluded_pcd
+        del pcd_msg
 
     def get_robot_state_from_joint_dict(self, joint_dict, attached_acos=[]):
         joint_state = JointState()
@@ -185,7 +194,10 @@ class MotionPlanner():
         for point in points:
             positions.append(point.positions)
             time_from_starts.append(point.time_from_start)
-        return joint_names, positions, time_from_starts
+        if plan[0]:
+            return joint_names, positions, time_from_starts
+        else:
+            return joint_names, [], []
 
     
     def format_joint_name_val_dict(self, joint_names, joint_vals):
@@ -242,9 +254,13 @@ class MotionPlanner():
         joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
         pre_suction_joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
 
+        # input('after suction_plan, length of trajectory: %d' % (len(pre_suction_joint_dict_list)))
+        if len(pre_suction_joint_dict_list) == 0:
+            return []
         # concatenate the two list to return
         return pre_suction_joint_dict_list + suction_joint_dict_list
 
+    @profile
     def suction_with_obj_plan(self, start_joint_dict, tip_pose_in_obj, target_joint_val, robot, 
                                 obj_idx, objects):
         """
@@ -285,6 +301,12 @@ class MotionPlanner():
         joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
         suction_joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
 
+        del co
+        del aco
+        del mesh_vertices
+        del mesh_faces
+
+
         return suction_joint_dict_list
 
     def joint_dict_motion_plan(self, start_joint_dict, goal_joint_dict, robot):
@@ -293,7 +315,7 @@ class MotionPlanner():
         joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
         return joint_dict_list
 
-
+    @profile
     def motion_plan_joint(self, start_joint_dict, goal_joint_dict, robot, attached_acos=[]):
         joint_state = JointState()
         # joint_state.header = Header()
@@ -316,20 +338,23 @@ class MotionPlanner():
             new_goal_joint_dict[name] = val
         goal_joint_dict = new_goal_joint_dict
         
+
+        self.move_group.set_planner_id('BiTRRT')
         self.move_group.set_start_state(moveit_robot_state)
         
         self.move_group.set_joint_value_target(goal_joint_dict)
 
         self.move_group.set_planning_time(30)
-        self.move_group.set_num_planning_attempts(100)
+        self.move_group.set_num_planning_attempts(5)
         self.move_group.allow_replanning(False)
         plan = self.move_group.plan()  # returned value: tuple (flag, RobotTrajectory, planning_time, error_code)
-        print('plan: ')
-        print(plan)
-        input("next...")
+        # input("next...")
+        del moveit_robot_state
+        del new_goal_joint_dict
+
         return plan
 
-    def straight_line_motion(self, start_joint_dict, start_tip_pose, relative_tip_pose, robot, collision_check=False):
+    def straight_line_motion(self, start_joint_dict, start_tip_pose, relative_tip_pose, robot, collision_check=False, display=False):
         # given the start joint values and the relative tip pose to move, move in straight line
 
         start_pos = start_tip_pose[:3,3]
@@ -360,10 +385,24 @@ class MotionPlanner():
             valid, joint_step = robot.get_ik(robot.tip_link_name, tip_pos_step, 
                                                     [quat[1],quat[2],quat[3],quat[0]], prev_joint,
                                                     ik_collision_check)
+            if display:
+                input('step %d/%d..., valid: %d' % (i, n_step, valid))
+                joint_dict = self.format_joint_name_val_dict(robot.joint_names, [joint_step])[0]
+                rs = self.get_robot_state_from_joint_dict(joint_dict)
+                self.display_robot_state(rs)
+
+                
             if valid:
                 prev_joint = joint_step
                 joint_vals.append(prev_joint)
-        joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, joint_vals)        
+
+
+        joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, joint_vals)   
+
+        if display:
+            del rs
+            del joint_dict
+
         return joint_dict_list
 
     def display_robot_state(self, state, group_name='robot_arm'):
@@ -422,8 +461,6 @@ class MotionPlanner():
                     if ((vertex_items[i]==vertex_items[j]) & (vertex_items[j]==vertex_items[k])).sum()>0:
                         face_items.append([i,j,k])
 
-        print(face_items)
-
         voxel_pts_total = np.concatenate(voxel_pts_vertices, axis=0)
         voxel_pt_indices = np.array(list(range(len(voxel_pts))))
         voxel_face_total = []
@@ -463,6 +500,14 @@ class MotionPlanner():
         # voxel_pts_total = np.asarray(cvx_hull.vertices)
         # voxel_face_total = np.asarray(cvx_hull.triangles)
 
+        
+        del voxel_pt_indices
+        del vertex_items
+        del face_items
+        del voxel_pts_vertices
+        del voxel_pts
+        del face
+
         return voxel_pts_total, voxel_face_total
 
     def add_mesh_from_vertices_and_faces(self, vertices, faces, transform, name):
@@ -488,8 +533,6 @@ class MotionPlanner():
         co.meshes = [mesh]
 
         pose = Pose()
-        print('transform: ')
-        print(transform)
         quat = tf.quaternion_from_matrix(transform)  # w x y z
         pose.position.x = transform[0,3]
         pose.position.y = transform[1,3]
@@ -502,7 +545,8 @@ class MotionPlanner():
 
         co.mesh_poses = [pose]
 
-        # self.co_pub.publish(co)
+        del mesh
+
         return co
 
     def attach_object(self, collision_object, link_name, touch_links):

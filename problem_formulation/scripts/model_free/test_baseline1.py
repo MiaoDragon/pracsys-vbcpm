@@ -24,9 +24,11 @@ from motion_planner import MotionPlanner
 import sys
 import pickle
 
-if __name__ == "__main__":
+from memory_profiler import profile
 
-    
+
+@profile
+def main():
     if int(sys.argv[1]) > 0:
         print('argv: ', sys.argv)
         # load previously generated object
@@ -48,10 +50,10 @@ if __name__ == "__main__":
             target_pose, target_pcd, target_obj_id, target_obj_shape, target_obj_size = data
         data = (scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size)
         save = input('save current scene? 0 - no, 1 - yes...')
+        f = open(scene_f, 'r')
+        scene_dict = json.load(f)
+        f.close()
         if int(save) == 1:
-            f = open(scene_f, 'r')
-            scene_dict = json.load(f)
-            f.close()
             f = open('saved_problem.pkl', 'wb')
             pickle.dump(data, f)
             f.close()
@@ -77,4 +79,7 @@ if __name__ == "__main__":
     pipeline = PipelineBaseline(problem_def)
 
     # pipeline.solve(ProbPlanner())
-    pipeline.run_pipeline(10)
+    pipeline.run_pipeline(10)    
+
+if __name__ == "__main__":
+    main()

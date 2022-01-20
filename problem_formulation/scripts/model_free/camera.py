@@ -62,6 +62,7 @@ class Camera():
         self.info['extrinsics'] = cam_extrinsics
         self.info['factor'] = 1.0  # To be parameterized
         self.info['img_size'] = img_size
+        self.info['img_shape'] = [img_size, img_size]
         self.info['far'] = far
         self.info['near'] = near
         self.info['pos'] = cam_pos

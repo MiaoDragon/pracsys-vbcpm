@@ -114,7 +114,11 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
         dz_max = 0.2
         pos = np.random.uniform(low=[x_min, y_min, z_min], high=[x_max, y_max, z_max])
 
-        ori = obj.transform
+        angle = np.random.normal(loc=0,scale=1,size=[2])
+        angle = angle / np.linalg.norm(angle)
+        angle = np.arcsin(angle[1])
+        # rotate around z axis
+        ori = tf.rotation_matrix(angle, [0,0,1])
         transform = np.eye(4)
         transform[:3,:3] = ori[:3,:3]
         transform[:3,3] = pos
@@ -210,7 +214,6 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
             if collision:
                 print('collision...')
                 continue
-            print('adding pose to list...')
             filtered_tip_poses_in_obj.append(selected_tip_in_obj)
             filtered_start_suction_joints.append(start_suction_joint)
             filtered_intermediate_joints.append(dof_joint_vals)
@@ -372,7 +375,7 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
             break
         camera_extrinsics = camera.info['extrinsics']
         camera_intrinsics = camera.info['intrinsics']
-        uncertainty = occlusion.obtain_object_uncertainty(obj, net_transform, camera_extrinsics, camera_intrinsics)
+        uncertainty = occlusion.obtain_object_uncertainty(obj, net_transform, camera_extrinsics, camera_intrinsics, camera.info['img_shape'])
         if uncertainty > max_uncertainty:
             max_uncertainty = uncertainty
             max_net_transform = net_transform
@@ -383,7 +386,7 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
 
 
     sense_pose = max_net_transform
-
+    del transformed_pcd
     # sense_pose = transform
     return sense_pose, max_selected_tip_in_obj, max_transformed_tip, max_start_suction_joint, max_dof_joint_vals
 
@@ -497,12 +500,12 @@ def placement_pose_generation(obj_i, objects, occlusion, occlusion_label, occupi
         #  but for occupied space we need to exclude the ones occupied by the current object
 
         # visualize
-        voxel1 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occlusion_label>0, [0,0,0])
-        pcd1 = visualize_pcd(transformed_pcd_in_voxel, [1,0,0])
-        voxel2 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, 
-                                (occupied_label>0)&(occupied_label!=obj_i+1), [0,0,1])
+        # voxel1 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occlusion_label>0, [0,0,0])
+        # pcd1 = visualize_pcd(transformed_pcd_in_voxel, [1,0,0])
+        # voxel2 = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, 
+        #                         (occupied_label>0)&(occupied_label!=obj_i+1), [0,0,1])
 
-        o3d.visualization.draw_geometries([voxel1, pcd1, voxel2])            
+        # o3d.visualization.draw_geometries([voxel1, pcd1, voxel2])            
 
         if (extracted_occlusion>0).sum() > 0:
             # invalid

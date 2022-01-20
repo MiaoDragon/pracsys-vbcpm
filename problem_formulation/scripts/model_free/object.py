@@ -259,13 +259,16 @@ class ObjectModel():
         self.tsdf[self.tsdf<self.min_v] = self.min_v
 
         # handle invalid space: don't update
-        invalid_space = ((voxel_depth <= 0) | (tsdf < self.min_v)) & valid_mask
+        # invalid_space = ((voxel_depth <= 0) | (tsdf < self.min_v)) & valid_mask
 
         self.tsdf[self.tsdf_count==0] = 0.0
 
         # self.get_surface_normal()
         # suction_disc = np.arange(start=0.0,stop=0.06, step=0.005)[1:]
         # pose_generation.grasp_pose_generation(self, suction_disc)
+        del voxel_vecs
+        del valid_space
+        del tsdf
 
     def update_tsdf_unhidden(self, depth_img, color_img, camera_extrinsics, camera_intrinsics):
         """
@@ -343,7 +346,7 @@ class ObjectModel():
         self.tsdf[self.tsdf<self.min_v] = self.min_v
 
         # handle invalid space: don't update
-        invalid_space = (tsdf < self.min_v) & valid_mask
+        # invalid_space = (tsdf < self.min_v) & valid_mask
 
         self.tsdf[self.tsdf_count==0] = 0.0
 
@@ -351,6 +354,9 @@ class ObjectModel():
 
         # suction_disc = np.arange(start=0.0,stop=0.06, step=0.005)[1:]
         # pose_generation.grasp_pose_generation(self, suction_disc)
+
+        del tsdf
+        del valid_space
 
     def sample_pcd(self, mask, n_sample=10):
         # sample voxels in te mask
@@ -365,6 +371,10 @@ class ObjectModel():
         total_sample = total_sample + np.array([voxel_x, voxel_y, voxel_z]).T.reshape(len(voxel_x),1,3)
 
         total_sample = total_sample.reshape(-1, 3) * np.array(self.resol)
+
+        del voxel_x
+        del voxel_y
+        del voxel_z
 
         return total_sample
 

@@ -2,6 +2,7 @@
 SLAM system to reconstruct objects and update occlusion volumes
 use this whenever a new picture is obtained
 """
+import profile
 from object import ObjectModel
 from occlusion import Occlusion
 
@@ -9,6 +10,11 @@ import numpy as np
 import cv2
 from visual_utilities import *
 import open3d as o3d
+
+from memory_profiler import profile
+
+import gc
+
 
 LOG = 0
 
@@ -27,6 +33,8 @@ class SLAMPerception():
         # self.table_z = self.occlusion.z_base
         # self.filtered_occupied_label = filtered_occupied_label
         self.filtered_occluded_dict = None
+
+    @profile
     def perceive(self, depth_img, color_img, seg_img, assoc, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids):
         """
         given depth img and color img from camera, and segmented and labeld images from 
@@ -39,19 +47,17 @@ class SLAMPerception():
         Occlusion:
         use the new reconstructed object model, get new occlusion of the scene
         """
+        depth_img = np.array(depth_img)
 
         for cid in workspace_ids:
             depth_img[seg_img==cid] = 0  # workspace
         depth_img[seg_img==-1] = 0  # background
-
-        total_occluded = self.occlusion.scene_occlusion(depth_img, color_img, camera_extrinsics, camera_intrinsics)
 
         # generate valid objects: objects that are not hidden by others
         valid_objects = []
         for obj_id, obj_hide_set in obj_hide_sets.items():
             if len(obj_hide_set) == 0:
                 valid_objects.append(obj_id)
-
 
         for seg_id, obj_id in assoc.items():
             # print((seg_img==seg_id).astype(int).sum())
@@ -97,6 +103,10 @@ class SLAMPerception():
                 voxel_y_min = self.occlusion.voxel_y[occluded].reshape(-1)-np.ceil(self.object_params['resol'][1]*self.object_params['scale'])-1
                 voxel_z_min = self.occlusion.voxel_z.reshape(-1)-np.ceil(self.object_params['resol'][2]*self.object_params['scale'])-1
                 voxel_z_min = voxel_z_min[:len(voxel_x_min)]
+
+                if len(voxel_z_min) == 0:
+                    continue
+
                 voxel_z_min[:] = voxel_z_min.min()  # we want the min to be the lowest in the workspace
 
                 voxel_x_min = voxel_x_min * self.occlusion.resol[0]
@@ -121,6 +131,15 @@ class SLAMPerception():
                 xmax = voxel_max[:,0].max()
                 ymax = voxel_max[:,1].max()
                 zmax = voxel_max[:,2].max()
+
+                del voxel_x_min
+                del voxel_y_min
+                del voxel_z_min
+                del voxel_x_max
+                del voxel_y_max
+                del voxel_z_max
+                del voxel_min
+                del voxel_max
 
 
             if (not (obj_id in self.objects)):
@@ -163,12 +182,6 @@ class SLAMPerception():
 
             # self.objects[obj_id].update_tsdf_unhidden(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
             # show updated conservative volume
-            if LOG:
-                vis_voxel1 = visualize_voxel(self.objects[obj_id].voxel_x, self.objects[obj_id].voxel_y, self.objects[obj_id].voxel_z,
-                                            self.objects[obj_id].get_conservative_model(), [0,0,0])
-                vis_voxel2 = visualize_voxel(self.objects[obj_id].voxel_x, self.objects[obj_id].voxel_y, self.objects[obj_id].voxel_z,
-                                            self.objects[obj_id].get_optimistic_model(), [1,0,0])
-                o3d.visualization.draw_geometries([vis_voxel1, vis_voxel2])
 
 
 
@@ -209,8 +222,6 @@ class SLAMPerception():
 
 
         if LOG:
-            if self.filtered_occluded is not None:
-                voxel_env = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,self.filtered_occluded,[0,0,0])
             color_pick = np.zeros((8,3))
             color_pick[0] = np.array([1., 0., 0.])
             color_pick[1] = np.array([0., 1.0, 0.])
@@ -222,55 +233,6 @@ class SLAMPerception():
             color_pick[7] = np.array([60/255, 73/255, 10/255])
 
 
-        opt_occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_opt_pcds)
-
-        # occupied_label
-        voxel_occlusions = []
-        voxel_occupied = []
-        voxel_opts = []
-
-        if LOG:
-            for obj_id, obj in self.objects.items():
-                if (obj_id in opt_occupied_dict) and opt_occupied_dict[obj_id].sum() != 0:
-                    voxel1 = visualize_voxel(self.occlusion.voxel_x, 
-                                            self.occlusion.voxel_y,
-                                            self.occlusion.voxel_z,
-                                            opt_occupied_dict[obj_id], color_pick[obj_id])
-                    voxel_opts.append(voxel1)
-                if (obj_id in occluded_dict) and (occluded_dict[obj_id]).sum() != 0:
-                    voxel1 = visualize_voxel(self.occlusion.voxel_x, 
-                                            self.occlusion.voxel_y,
-                                            self.occlusion.voxel_z,
-                                            occluded_dict[obj_id], color_pick[obj_id])
-                    voxel_occlusions.append(voxel1)
-                if (occupied_label==obj_id+1).sum() != 0:
-                    voxel1 = visualize_voxel(self.occlusion.voxel_x, 
-                                            self.occlusion.voxel_y,
-                                            self.occlusion.voxel_z,
-                                            occupied_label==obj_id+1, color_pick[obj_id])
-                    voxel_occupied.append(voxel1)
-            voxel_occluded = visualize_voxel(self.occlusion.voxel_x, 
-                                            self.occlusion.voxel_y,
-                                            self.occlusion.voxel_z,
-                                            occluded, color_pick[obj_id])
-
-            print('occlusion:')
-            o3d.visualization.draw_geometries([voxel_occluded])      
-
-            print('optimistic model:')
-            o3d.visualization.draw_geometries(voxel_opts)      
-            print('label occlusions:')
-            o3d.visualization.draw_geometries(voxel_occlusions)      
-            print('label occupied:')
-            o3d.visualization.draw_geometries(voxel_occupied)      
-            print('occlusion with label occupied:')
-            o3d.visualization.draw_geometries([voxel_occluded] + voxel_occupied)      
-
-
-        pcd = self.objects[obj_id].sample_optimistic_pcd(n_sample=10)
-
-
-
         filtered_occluded, filtered_occlusion_label, filtered_occluded_dict = \
             self.filtering(camera_extrinsics, camera_intrinsics)
         
@@ -279,7 +241,22 @@ class SLAMPerception():
         # self.filtered_occupied_label = filtered_occupied_label
         self.filtered_occluded_dict = filtered_occluded_dict
 
+        del occluded
+        del occlusion_label
+        del occupied_label
+        del occupied_dict
+        del occluded_dict
+        del filtered_occluded
+        del filtered_occlusion_label
+        del filtered_occluded_dict
+        del obj_pcds
+        del obj_opt_pcds
 
+        del seg_depth_img
+        
+
+
+    @profile
     def filtering(self, camera_extrinsics, camera_intrinsics):
         """
         since we remove each object and sense at each time, recording the list of past sensed depth images
@@ -305,44 +282,10 @@ class SLAMPerception():
     
             for obj_id, obj_pose in self.sensed_poses[i].items():
                 obj_poses[obj_id] = obj_pose
-            occlusion_label, occupied_label, occluded_dict, occupied_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
-
-
-            if LOG:
-                vis_voxels = []
-                vis_occupied_voxels = []
-
-                input('drawing from slam filter...')
-                vis_voxel = visualize_voxel(self.occlusion.voxel_x, self.occlusion.voxel_y, self.occlusion.voxel_z,
-                                            occluded, [1,0,0])
-                o3d.visualization.draw_geometries([vis_voxel])
-                
-                for obj_id, obj in occluded_dict.items():
-                    # if id == move_obj_idx:
-                    #     continue
-                    # should include occlusion induced by this object
-                    if occluded_dict[obj_id].sum() > 0:
-                        vis_voxel = visualize_voxel(self.occlusion.voxel_x, 
-                                                    self.occlusion.voxel_y,
-                                                    self.occlusion.voxel_z,
-                                                    occluded_dict[obj_id], [1,0,0])
-                        vis_voxels.append(vis_voxel)
-                    if occupied_dict[obj_id].sum() > 0:
-                        vis_occupied_voxel = visualize_voxel(self.occlusion.voxel_x, 
-                                                            self.occlusion.voxel_y,
-                                                            self.occlusion.voxel_z, 
-                                                            occupied_dict[obj_id], [1,0,0])
-                        vis_occupied_voxels.append(vis_occupied_voxel)            
-                o3d.visualization.draw_geometries(vis_voxels)
-                o3d.visualization.draw_geometries(vis_occupied_voxels)
-
+            occlusion_label, occupied_label, occluded_dict, _ = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds, obj_opt_pcds)
         
 
-            occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_conserv_pcds)
             opt_occupied_dict = self.occlusion.obtain_object_occupancy(camera_extrinsics, camera_intrinsics, obj_poses, obj_opt_pcds)
-
-            voxels = []
-            opt_voxels = []
 
             opt_occupied_label = np.zeros(occupied_label.shape).astype(int)
             for obj_id, opt_occupied in opt_occupied_dict.items():
@@ -382,6 +325,17 @@ class SLAMPerception():
         for obj_id, obj_occlusion in occluded_dict.items():
             occluded_dict[obj_id] = occluded_dict[obj_id] & net_occluded
             new_occlusion_label[(occlusion_label==obj_id+1) & net_occluded] = obj_id+1
+
+        del obj_conserv_pcds
+        del obj_opt_pcds
+        del obj_poses
+        del pcd
+        del occluded
+        del ori_pcd
+        del occupied_mask
+        del occlusion_label
+        gc.collect()
+
         return net_occluded, new_occlusion_label, occluded_dict
 
 
@@ -428,17 +382,6 @@ class SLAMPerception():
 
             voxels = []
             opt_voxels = []
-            if LOG:
-                for obj_id, obj in self.objects.items():
-                    if opt_occupied_dict[obj_id].sum() != 0:
-                        # voxel_i = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,occupied_dict[obj_id],color_pick[obj_id])
-                        # voxels.append(voxel_i)
-                        voxel_i = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,opt_occupied_dict[obj_id],color_pick[obj_id])
-                        voxels.append(voxel_i)
-                    if (occupied_label==obj_id+1).sum() != 0:
-                        voxel_i = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,occupied_label==obj_id+1,[0,0,0])
-                        voxels.append(voxel_i)
-                o3d.visualization.draw_geometries(voxels)
 
             opt_occupied_label = np.zeros(occupied_label.shape).astype(int)
             for obj_id, opt_occupied in opt_occupied_dict.items():
