@@ -99,7 +99,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         print(pcd_cube)
         print('pcd cylinder: ')
         print(pcd_cylinder)
-        # basic shape: cube of size 1, shpere of size 1
+        # basic shape: cube of size 1, cylinder of size 1
 
         # assuming the workspace coordinate system is at the center of the world
         # * sample random objects on the workspace
@@ -128,7 +128,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
             elif obj_shape == 'cylinder':
                 x_scales = np.arange(0.25, 0.40, 0.05) / 10
                 y_scales = np.arange(0.25, 0.40, 0.05) / 10
-                z_scales = np.arange(0.5, 1.5, 0.05) / 10
+                z_scales = np.arange(1.0, 1.5, 0.05) / 10
             elif obj_shape == 'wall':
                 x_scales = np.arange(0.25, 0.40, 0.05) / 10
                 y_scales = np.arange(2.0, 2.5, 0.05) / 10
@@ -356,11 +356,13 @@ while pose_ind != 'q':
         pose_ind = input("Press Enter Pose Index: ")
         continue
     i = obj_i - 1
+    t0 = time.time()
     poses = robot.getGrasps(obj_ids[i])
     filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
     filteredPoses += robot.filterGrasps(robot.right_gripper_id, poses)
+    t1 = time.time()
 
-    print(obj_ids)
+    print("Time: ", t1 - t0)
     for pose, cols in filteredPoses:
         input("Next?")
         # robot.setMotors(jointPoses)

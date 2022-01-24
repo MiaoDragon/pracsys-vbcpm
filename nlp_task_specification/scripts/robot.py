@@ -230,12 +230,13 @@ class Robot():
                     physicsClientId=self.pybullet_id
                 )
 
-    def getGrasps(self, object_id, resolution=8):
+    def getGrasps(self, object_id, offset=(0, 0, 0.021), resolution=8):
         """
         resolution must be even
         """
         shape = p.getCollisionShapeData(object_id, -1, self.pybullet_id)[0]
         res = 5 if shape[2] == p.GEOM_BOX else resolution + 1
+        hres = (res // 2) + 1
 
         # grasp orientations
         # vertical
@@ -252,7 +253,7 @@ class Robot():
         # rotate along gripper axis:
         for y in np.linspace(-np.pi, np.pi, res):
             # rotate along horizontal axis:
-            for z in np.linspace(-np.pi, 0, (res // 2) + 1):
+            for z in np.linspace(-np.pi, 0, hres):
                 horz.append(p.getQuaternionFromEuler((x, y, z)))
 
         # object position and orientation
@@ -297,11 +298,11 @@ class Robot():
             grasps += [[(0, 0, 0), o] for o in vert]
             grasps += [
                 [(0, 0, 0), o]
-                for o in horz[res * ((res - 1) // 4):res * ((res + 3) // 4)]
+                for o in horz[hres * ((res - 1) // 4):hres * ((res + 3) // 4)]
             ]
             grasps += [
                 [(0, 0, 0), o]
-                for o in horz[res * ((-res - 1) // 4):res * ((-res + 3) // 4)]
+                for o in horz[hres * ((-res - 1) // 4):hres * ((-res + 3) // 4)]
             ]
         elif shape[2] == p.GEOM_SPHERE:
             r = shape[3][0]
@@ -312,9 +313,9 @@ class Robot():
         poses = []
         for pos, rot in grasps:
             tpos, trot = p.multiplyTransforms(
-                (0, 0, 0), rot, (0, 0, 0), obj_rot, self.pybullet_id
+                (0, 0, 0), rot, offset, obj_rot, self.pybullet_id
             )
-            pose = [np.add(obj_pos, pos), trot]
+            pose = [tpos + np.add(obj_pos, pos), trot]
             poses.append(pose)
 
         return poses
@@ -347,7 +348,6 @@ class Robot():
                     x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))
                 ]
                 # filteredJointPoses.append(jointPoses)
-
                 ignore_ids = collision_ignored + [self.robot_id]
                 collisions = set()
                 for i in range(p.getNumBodies(physicsClientId=self.pybullet_id)):
