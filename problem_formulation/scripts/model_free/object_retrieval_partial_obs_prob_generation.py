@@ -61,7 +61,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         [0.8, 0.8757, 0.8757, 0.81, 0.8757, 0.8757]
 
     robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], 
-                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid)
+                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid, [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0])
 
 
     joints = [0,
@@ -116,9 +116,9 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
             obj_shapes.append(obj_shape)
             # randomly scale the object
             if i == 0:
-                x_scales = np.arange(0.4, 0.7, 0.1)/10
-                y_scales = np.arange(0.4, 0.7, 0.1)/10
-                z_scales = np.arange(0.5, 0.9, 0.1)/10
+                x_scales = np.arange(0.4, 0.9, 0.1)/10
+                y_scales = np.arange(0.4, 0.9, 0.1)/10
+                z_scales = np.arange(0.8, 1.2, 0.1)/10
                 # put it slightly inside
             else:
                 x_scales = np.arange(0.5, 1.2, 0.1)/10
@@ -317,7 +317,7 @@ def load_problem(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
         [0.8, 0.8757, 0.8757, 0.81, 0.8757, 0.8757]
 
     robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], 
-                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid)
+                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid, [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0])
 
 
     joints = [0,
@@ -359,7 +359,7 @@ def load_problem(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
             bid = p.createMultiBody(baseCollisionShapeIndex=cid, baseVisualShapeIndex=vid, basePosition=[x,y,z], baseOrientation=[0,0,0,1])
         obj_ids.append(bid)
 
-    return pid, scene, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_poses, obj_pcds, obj_ids
+    return pid, scene, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_poses[0], obj_pcds[0], obj_ids[0]
 
 
 

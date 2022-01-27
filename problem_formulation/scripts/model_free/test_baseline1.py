@@ -24,10 +24,8 @@ from motion_planner import MotionPlanner
 import sys
 import pickle
 
-from memory_profiler import profile
 
 
-@profile
 def main():
     if int(sys.argv[1]) > 0:
         print('argv: ', sys.argv)
@@ -74,6 +72,9 @@ def main():
     motion_planner = MotionPlanner(robot, workspace)
     problem_def['motion_planner'] = motion_planner
     
+    construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
+    input('after constrcuting occlusion graph')
+
     robot.set_motion_planner(motion_planner)
 
     pipeline = PipelineBaseline(problem_def)

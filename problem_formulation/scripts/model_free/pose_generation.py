@@ -8,7 +8,7 @@ import transformations as tf
 import pybullet as p
 from tqdm import trange
 
-def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_label, occupied_label, sample_n=10):
+def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_label, occupied_label, sample_n=10, result_n=20):
     """
     given the object pose and voxels, generate the grasp pose
     reference:
@@ -67,6 +67,8 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     # * transform the local grasp pose to global one using the object transform
     transformed_suction_pts = obj.transform[:3,:3].dot(filtered_suction_pts.T).T + obj.transform[:3,3]
     transformed_suction_normal = obj.transform[:3,:3].dot(filtered_suction_normal.T).T# + obj.transform[:3,3]
+
+    
     transformed_suction_y = np.array(transformed_suction_normal)
     transformed_random = np.random.normal(loc=0., scale=1.0, size=transformed_suction_normal.shape)
     transformed_random = transformed_random / np.linalg.norm(transformed_random, axis=1).reshape(-1,1)
@@ -76,16 +78,23 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
 
     transformed_suction_x = np.cross(transformed_suction_y, transformed_suction_normal)
 
+    # TODO: visualize the suction pose
+    arrows = []
+    for i in range(len(other_suction_normal)):
+        arrow = visualize_arrow(scale=0.1, translation=other_suction_pts[i]/obj.resol, 
+                                direction=-other_suction_normal[i], color=[1,0,0])
+        arrows.append(arrow)
 
-    # generate point cloud of the occluded and occupied space
-    # occluded_pcd = np.array([occlusion.voxel_x[occlusion_label>0],occlusion.voxel_y[occlusion_label>0],occlusion.voxel_z[occlusion_label>0]]).T+0.5
-    # occupied_pcd = np.array([occlusion.voxel_x[(occupied_label>0)&(occupied_label!=obj_id)],
-    #                          occlusion.voxel_y[(occupied_label>0)&(occupied_label!=obj_id)],
-    #                          occlusion.voxel_z[(occupied_label>0)&(occupied_label!=obj_id)]]).T+0.5
-    # env_pcd = np.concatenate([occluded_pcd, occupied_pcd], axis=0)
-    # # to world coordinate frame
-    # env_pcd = occlusion.resol * env_pcd
-    # env_pcd = occlusion.transform[:3,:3].dot(env_pcd.T).T + occlusion.transform[:3,3]
+    for i in range(len(filtered_suction_normal)):
+        arrow = visualize_arrow(scale=0.1, translation=filtered_suction_pts[i]/obj.resol, 
+                                direction=-filtered_suction_normal[i], color=[0,1,0])
+        arrows.append(arrow)
+    # pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
+    voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, obj.get_optimistic_model(), [0,0,1])
+    o3d.visualization.draw_geometries(arrows + [voxel])
+
+    del arrows
+    del voxel
 
     valid_pts = []
     valid_orientations = []
@@ -95,7 +104,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     frames = []
 
     # select 10 suction pts
-    selected_suction_pts = np.random.choice(len(transformed_suction_pts), sample_n)
+    selected_suction_pts = np.random.choice(len(transformed_suction_pts), sample_n, replace=False)
     transformed_suction_pts = transformed_suction_pts[selected_suction_pts]
     transformed_suction_normal = transformed_suction_normal[selected_suction_pts]
     transformed_suction_y = transformed_suction_y[selected_suction_pts]
@@ -113,10 +122,10 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
             rot_mat[:3,:3] = np.array([suction_x, suction_y, transformed_suction_normal[i]]).T
             quat = tf.quaternion_from_matrix(rot_mat)  # w x y z
             valid, dof_joint_vals = robot.get_ik(robot.tip_link_name, transformed_suction_pts[i], [quat[1],quat[2],quat[3],quat[0]], 
-                                                robot.joint_vals, collision_check=True)
+                                                robot.joint_vals, collision_check=True, workspace=workspace)
             if not valid:
                 # ik failed. next
-                print('ik not valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
+                # print('ik not valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
                 continue
             # reset the robot joint angles, and check collision with the environment
             prev_joint_vals = robot.joint_vals
@@ -153,7 +162,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
             robot.set_joints(prev_joint_vals)
 
             if collision:
-                print('collision, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
+                # print('collision, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
                 continue
 
             rot_mat = np.array(rot_mat)
@@ -165,9 +174,21 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
             valid_pts.append(transformed_suction_pts[i])
             valid_orientations.append(rot_mat)
             valid_joints.append(dof_joint_vals)
-            print('found valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
+            # print('found valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
     
     valid_poses_in_obj = valid_orientations
+
+    # select 10 of the poses
+    if result_n < len(valid_pts):
+        valid_indices = np.random.choice(len(valid_pts), size=sample_n, replace=False)
+        valid_pts = [valid_pts[i] for i in valid_indices]
+        valid_poses_in_obj = [valid_poses_in_obj[i] for i in valid_indices]
+        valid_joints = [valid_joints[i] for i in valid_indices]
+
+    del valid_orientations
+    del total_filter
+    del valid_filter
+    del collision_filter
 
     #TODO: test this code
     return valid_pts, valid_poses_in_obj, valid_joints

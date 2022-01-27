@@ -34,7 +34,6 @@ class SLAMPerception():
         # self.filtered_occupied_label = filtered_occupied_label
         self.filtered_occluded_dict = None
 
-    @profile
     def perceive(self, depth_img, color_img, seg_img, assoc, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids):
         """
         given depth img and color img from camera, and segmented and labeld images from 
@@ -240,6 +239,7 @@ class SLAMPerception():
         self.filtered_occlusion_label = filtered_occlusion_label
         # self.filtered_occupied_label = filtered_occupied_label
         self.filtered_occluded_dict = filtered_occluded_dict
+        
 
         del occluded
         del occlusion_label
@@ -256,7 +256,7 @@ class SLAMPerception():
         
 
 
-    @profile
+
     def filtering(self, camera_extrinsics, camera_intrinsics):
         """
         since we remove each object and sense at each time, recording the list of past sensed depth images

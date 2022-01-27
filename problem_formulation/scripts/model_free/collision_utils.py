@@ -13,7 +13,6 @@ def obj_pose_collision(obj_id, obj, transform, occlusion, occluded_label, occupi
     ws_lls = workspace.bbox_lls
     ws_uls = workspace.bbox_uls
     
-
     # for visualization
     obj_pcd_in_occ = occlusion.world_in_voxel_rot.dot(obj_pcd.T).T + occlusion.world_in_voxel_tran
     obj_pcd_in_occ = obj_pcd_in_occ / occlusion.resol
@@ -116,3 +115,5 @@ def robot_collision_with_voxel_env(joint_vals, robot, collision_transform, colli
     # * check against collision
     # collision: return True
     return collision_voxel[transformed_rpcd[:,0], transformed_rpcd[:,1], transformed_rpcd[:,2]].sum() > 0
+
+

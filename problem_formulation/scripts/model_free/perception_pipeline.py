@@ -47,6 +47,11 @@ class PerceptionPipeline():
             
         self.slam_system.perceive(depth_img, color_img, seg_img, assoc, object_hide_set, camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], robot_ids, workspace_ids)
 
+        # update each object's hide set
+        for obj_i, obj_hide_list in object_hide_set.items():
+            self.slam_system.objects[obj_i].update_obj_hide_set(obj_hide_list)
+
+
         for obj_id in valid_objects:
             self.slam_system.objects[obj_id].set_active()
             
@@ -250,7 +255,7 @@ class PerceptionPipeline():
                 # if (not obj_id in self.slam_system.objects) or (not self.slam_system.objects[obj_id].active):
                 #     continue
             
-            print('object %d is valid' % (obj_id))
+            # print('object %d is valid' % (obj_id))
             valid_objects.append(obj_id)
 
 

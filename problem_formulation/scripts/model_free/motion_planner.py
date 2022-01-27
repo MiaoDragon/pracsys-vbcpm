@@ -30,8 +30,11 @@ from geometry_msgs.msg import Pose, Point
 from shape_msgs.msg import SolidPrimitive, Plane, Mesh, MeshTriangle
 
 from memory_profiler import profile
+import os
+import psutil
 
-
+import objgraph
+import gc
 class MotionPlanner():
     def __init__(self, robot, workspace, commander_args=[]):
         # set up the scene
@@ -53,11 +56,11 @@ class MotionPlanner():
         self.workspace = workspace
 
         self.pcd_topic = '/perception/points'
-        self.pcd_pub = rospy.Publisher(self.pcd_topic, PointCloud2, queue_size=10, latch=True)
+        self.pcd_pub = rospy.Publisher(self.pcd_topic, PointCloud2, queue_size=3, latch=True)
 
-        self.co_pub = rospy.Publisher('/collision_object', CollisionObject, queue_size=100, latch=True)
+        self.co_pub = rospy.Publisher('/collision_object', CollisionObject, queue_size=3, latch=True)
 
-        self.rs_pub = rospy.Publisher('/display_robot_state', DisplayRobotState, queue_size=100, latch=True)
+        self.rs_pub = rospy.Publisher('/display_robot_state', DisplayRobotState, queue_size=3, latch=True)
         # set up workspace collision
         components = workspace.components
         for component_name, component in components.items():
@@ -97,10 +100,16 @@ class MotionPlanner():
         try:
             ros_srv = rospy.ServiceProxy('clear_octomap', Empty)
             resp1 = ros_srv()
+
+            del ros_srv
+            del resp1
+
         except rospy.ServiceException as e:
             print("Service call failed: %s"%e)
             sys.exit(1)
-    
+
+        gc.collect()
+
     def wait(self, time):
         rospy.sleep(time)
 
@@ -129,12 +138,18 @@ class MotionPlanner():
         del total_pcd
         del pcd_msg
 
+        gc.collect()
+
 
     def set_collision_env(self, occlusion, occluded, occupied):
         # pcd -> octomap
         # clear environment first
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+
         self.clear_octomap()
         rospy.sleep(2.0)
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('clear_octomap increment memory: ', memory_after - memory_before)
 
         # collision_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
         #                                  occluded | occupied, [1,0,0])
@@ -142,6 +157,8 @@ class MotionPlanner():
 
 
         # * generate point cloud for occlusion space
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+
         occluded_pcd = occlusion.sample_pcd(occluded)
         occupied_pcd = occlusion.sample_pcd(occupied)
         total_pcd = np.concatenate([occluded_pcd, occupied_pcd], axis=0)
@@ -159,6 +176,13 @@ class MotionPlanner():
         del occupied_pcd
         del occluded_pcd
         del pcd_msg
+
+        gc.collect()
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('set_collision_env increment memory: ', memory_after - memory_before)
+        print('after motion_planner setting collision env..')
+        # objgraph.show_most_common_types(limit=20)
+        # objgraph.show_growth(limit=3)
 
     def get_robot_state_from_joint_dict(self, joint_dict, attached_acos=[]):
         joint_state = JointState()
@@ -213,7 +237,7 @@ class MotionPlanner():
             joint_dict_list.append(joint_dict)
         return joint_dict_list
 
-    def suction_plan(self, start_joint_dict, suction_pose, suction_joint, robot):
+    def suction_plan(self, start_joint_dict, suction_pose, suction_joint, robot, workspace, display=False):
         """
         return a list of dict: [{joint_name -> joint_vals}]
         """
@@ -241,10 +265,15 @@ class MotionPlanner():
             # get joints (through ik) for current step
             valid, suction_joint_step = robot.get_ik(robot.tip_link_name, suction_pos_step, 
                                                     [quat[1],quat[2],quat[3],quat[0]], prev_suction_joint,
-                                                    collision_check=collision_check)
+                                                    collision_check=collision_check, workspace=workspace)
             if valid:
                 prev_suction_joint = suction_joint_step
                 joint_vals.append(prev_suction_joint)
+                if display:
+                    robot.set_joints_without_memorize(suction_joint_step)
+                    input('next straight-line in suction_plan...')
+                    robot.set_joints_without_memorize(robot.joint_vals)
+
         joint_vals = joint_vals[::-1]  # reverse: from pre_suction_pos to suction_pos
         suction_joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, joint_vals)
         
@@ -260,7 +289,6 @@ class MotionPlanner():
         # concatenate the two list to return
         return pre_suction_joint_dict_list + suction_joint_dict_list
 
-    @profile
     def suction_with_obj_plan(self, start_joint_dict, tip_pose_in_obj, target_joint_val, robot, 
                                 obj_idx, objects):
         """
@@ -306,6 +334,8 @@ class MotionPlanner():
         del mesh_vertices
         del mesh_faces
 
+        print('after suction_with_obj_plan..')
+        objgraph.show_growth(limit=10)
 
         return suction_joint_dict_list
 
@@ -315,8 +345,10 @@ class MotionPlanner():
         joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
         return joint_dict_list
 
-    @profile
     def motion_plan_joint(self, start_joint_dict, goal_joint_dict, robot, attached_acos=[]):
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print("memory usage before motion_plan_joint: ", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
         joint_state = JointState()
         # joint_state.header = Header()
         # joint_state.header.stamp = rospy.Time.now()
@@ -338,6 +370,7 @@ class MotionPlanner():
             new_goal_joint_dict[name] = val
         goal_joint_dict = new_goal_joint_dict
         
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
         self.move_group.set_planner_id('BiTRRT')
         self.move_group.set_start_state(moveit_robot_state)
@@ -347,14 +380,32 @@ class MotionPlanner():
         self.move_group.set_planning_time(30)
         self.move_group.set_num_planning_attempts(5)
         self.move_group.allow_replanning(False)
+
+        print('increment memory before calling move_group.plan: ', memory_after - memory_before)
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         plan = self.move_group.plan()  # returned value: tuple (flag, RobotTrajectory, planning_time, error_code)
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('increment memory after move_group.plan(): ', memory_after - memory_before)
+
+
         # input("next...")
         del moveit_robot_state
         del new_goal_joint_dict
 
+        
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('increment memory after motion_plan_joint: ', memory_after - memory_before)
+
+        print('after motion_plan_joint..')
+        objgraph.show_growth(limit=10)
+
         return plan
 
-    def straight_line_motion(self, start_joint_dict, start_tip_pose, relative_tip_pose, robot, collision_check=False, display=False):
+    def straight_line_motion(self, start_joint_dict, start_tip_pose, relative_tip_pose, robot, workspace, 
+                            collision_check=False, display=False):
         # given the start joint values and the relative tip pose to move, move in straight line
 
         start_pos = start_tip_pose[:3,3]
@@ -384,7 +435,7 @@ class MotionPlanner():
                 ik_collision_check = collision_check
             valid, joint_step = robot.get_ik(robot.tip_link_name, tip_pos_step, 
                                                     [quat[1],quat[2],quat[3],quat[0]], prev_joint,
-                                                    ik_collision_check)
+                                                    ik_collision_check, workspace)
             if display:
                 input('step %d/%d..., valid: %d' % (i, n_step, valid))
                 joint_dict = self.format_joint_name_val_dict(robot.joint_names, [joint_step])[0]

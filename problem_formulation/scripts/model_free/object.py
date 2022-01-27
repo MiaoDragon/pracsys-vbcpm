@@ -97,7 +97,12 @@ class ObjectModel():
         self.world_in_voxel_rot = self.world_in_voxel[:3,:3]
         self.world_in_voxel_tran = self.world_in_voxel[:3,3]
 
+        self.obj_hide_set = set()  # list of objects that are hiding this object
     
+    def update_obj_hide_set(self, obj_hide_set):
+        # given the observed obj_hide_set, update it
+        self.obj_hide_set = self.obj_hide_set.union(set(obj_hide_set))
+
     def get_optimistic_model(self):
         threshold = 1
         return (self.tsdf_count >= threshold) & (self.tsdf < self.max_v) & (self.tsdf > self.min_v)

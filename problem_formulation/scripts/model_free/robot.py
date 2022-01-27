@@ -7,10 +7,13 @@ import transformations as tf
 from urdfpy import URDF
 
 class Robot():
-    def __init__(self, urdf, pos, ori, lower_lim, upper_lim, joint_range, tip_link_name, suction_length, pybullet_id):
+    def __init__(self, urdf, pos, ori, lower_lim, upper_lim, joint_range, tip_link_name, suction_length, pybullet_id,
+                 active_joint_mask):
         """
         given the URDF file, the pose of the robot base, and the joint angles,
         initialize a robot model in the scene
+
+        NOTE: lower_lim and upper_lim contain finger tip joints too due to PyBullet bug in IK
         """
         robot_id = p.loadURDF(urdf, pos, ori, useFixedBase=True, physicsClientId=pybullet_id)
         # get the number of active joints
@@ -62,8 +65,16 @@ class Robot():
         self.init_joint_vals = list(joint_vals)
         self.init_joint_dict = dict(joint_dict)
 
+        self.init_joint_vals_np = np.array(list(joint_vals))
+        self.active_joint_mask = np.array(active_joint_mask).astype(bool)  # mask indicate which joint is active
+
         self.lower_lim = np.array(lower_lim)
         self.upper_lim = np.array(upper_lim)
+
+        self.sample_lower_lim = np.array(lower_lim)[:len(active_joint_mask)]
+        self.sample_upper_lim = np.array(upper_lim)[:len(active_joint_mask)]
+
+
         self.jr = joint_range
 
         self.tip_link_name = tip_link_name
@@ -83,7 +94,7 @@ class Robot():
         """
         pcd_link_dict = {}
         for link in robot.links:
-            print('link name: ', link.name)            
+            # print('link name: ', link.name)            
             collisions = link.collisions
             if len(collisions) == 0:
                 continue
@@ -93,8 +104,8 @@ class Robot():
                 # pose of the trimesh:
                 # pose of link * origin * scale * trimesh_obj
                 geometry = collision.geometry.geometry
-                print('geometry: ', geometry)
-                print('tag: ', geometry._TAG)
+                # print('geometry: ', geometry)
+                # print('tag: ', geometry._TAG)
                 # geometry.scale: give us the scale for the mesh
                 
                 meshes = geometry.meshes
@@ -109,7 +120,7 @@ class Robot():
                     pcd = origin[:3,:3].dot(pcd.T).T + origin[:3,3]
                     link_pcd.append(pcd)
             link_pcd = np.concatenate(link_pcd, axis=0)
-            print('link_pcd shape: ', link_pcd.shape)
+            # print('link_pcd shape: ', link_pcd.shape)
             pcd_link_dict[link.name] = link_pcd
         self.pcd_link_dict = pcd_link_dict
 
@@ -129,7 +140,7 @@ class Robot():
         total_pcd = []
         for link_name, link_idx in self.total_link_name_ind_dict.items():
             if link_name not in self.pcd_link_dict:
-                print('link name ', link_name, 'not in pcd_link_dict')
+                # print('link name ', link_name, 'not in pcd_link_dict')
                 continue
             T = self.get_link_pose(link_name)
             total_pcd.append(T[:3,:3].dot(self.pcd_link_dict[link_name].T).T + T[:3,3])
@@ -215,6 +226,23 @@ class Robot():
             self.set_joints_without_memorize(self.joint_dict)
         return transform
 
+    def get_tip_link_pos_ori(self, joints=None):
+        if joints is not None:
+            self.set_joints_without_memorize(joints)
+
+        link_idx = self.total_link_name_ind_dict[self.tip_link_name]
+        link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
+        pos = np.array(link_state[4])
+        ori = link_state[5] # x y z w
+        ori = np.array([ori[1],ori[2],ori[3],ori[0]])
+
+        if joints is not None:
+            # reset
+            self.set_joints_without_memorize(self.joint_dict)
+        return pos, ori
+
+
+
     def set_suction_length(self, suction_length=0.3015):
         self.suction_length = suction_length
 
@@ -249,7 +277,7 @@ class Robot():
         self.set_joint_from_dict(prev_joint_states)
         return valid, joint_vals
 
-    def get_ik(self, link_name, position, orientation, rest_pose, collision_check=False):
+    def get_ik(self, link_name, position, orientation, rest_pose, collision_check=False, workspace=None):
         # quat: x y z w
         # print('before IK')
         # print('lower_lim: ',self.lower_lim)
@@ -284,6 +312,7 @@ class Robot():
             # print('joint values not within range')
             valid = False
         if not valid:
+            print('IK failed')
             return valid, dof_joint_vals
         # check collision
         if collision_check:
@@ -291,7 +320,17 @@ class Robot():
             robot_state = self.motion_planner.get_robot_state_from_joint_dict(joint_dict)
             result = self.motion_planner.get_state_validity(robot_state, group_name="robot_arm")
             if not result.valid:
+                print('state_validity failed')
                 valid = False
+                # show the result
+                self.set_joints_without_memorize(joint_dict)
+                input('show next...')
+                self.set_joints_without_memorize(self.joint_vals)
+
+
+            # result = self.robot_in_collision(dof_joint_vals, workspace)
+            # if result:
+            #     valid = False
         return valid, dof_joint_vals
         
 
@@ -319,4 +358,20 @@ class Robot():
             return True
         return False
 
-    
+    def robot_in_collision(self, joint_vals, workspace):
+        self.set_joints_without_memorize(joint_vals) 
+        # self-collision
+
+        # contacts = p.getClosestPoints(self.robot_id, self.robot_id, distance=0.,physicsClientId=self.pybullet_id)
+        # if len(contacts):
+        #     self.set_joints_without_memorize(self.joint_vals) 
+        #     return True
+
+        collision = False
+        for comp_name, comp_id in workspace.component_id_dict.items():
+            contacts = p.getClosestPoints(self.robot_id, comp_id, distance=0.,physicsClientId=self.pybullet_id)
+            if len(contacts):
+                collision = True
+                self.set_joints_without_memorize(self.joint_vals)
+                break
+        return collision

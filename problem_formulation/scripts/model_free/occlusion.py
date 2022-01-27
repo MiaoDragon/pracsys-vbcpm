@@ -66,37 +66,47 @@ class Occlusion():
         # generate the occlusion for the entire scene
         # occlusion includes: object occupied space, occlusion due to known object, occlusion due to 
         #                     unknown object
-        voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0))
-        # voxel_vecs = np.concatenate([self.voxel_x, self.voxel_y, self.voxel_z], axis=3)
-        voxel_vecs = voxel_vecs.reshape(-1,3) * self.resol
-        transformed_voxels = self.transform[:3,:3].dot(voxel_vecs.T).T + self.transform[:3,3]
-        # get to the image space
-        cam_transform = np.linalg.inv(camera_extrinsics)
-        transformed_voxels = cam_transform[:3,:3].dot(transformed_voxels.T).T + cam_transform[:3,3]
 
-        # cam_to_voxel_dist = np.linalg.norm(transformed_voxels, axis=1)
-        cam_to_voxel_depth = np.array(transformed_voxels[:,2])
-        # intrinsics
-        cam_intrinsics = camera_intrinsics
-        fx = cam_intrinsics[0][0]
-        fy = cam_intrinsics[1][1]
-        cx = cam_intrinsics[0][2]
-        cy = cam_intrinsics[1][2]
-        transformed_voxels[:,0] = transformed_voxels[:,0] / transformed_voxels[:,2] * fx + cx
-        transformed_voxels[:,1] = transformed_voxels[:,1] / transformed_voxels[:,2] * fy + cy
-        transformed_voxels = np.floor(transformed_voxels).astype(int)
-        voxel_depth = np.zeros((len(transformed_voxels)))
-        valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
-                        (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
-        voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
-        valid_mask = valid_mask.reshape(self.voxel_x.shape)
-        voxel_depth = voxel_depth.reshape(self.voxel_x.shape)
+        pt = np.array([[0,0,0],[0,0,1],[0,1,0],[0,1,1],[1,0,0],[1,0,1],[1,1,0],[1,1,1],[0.5,0.5,0.5]])
+        
+        occluded = np.zeros(self.voxel_x.shape).astype(bool)
 
-        cam_to_voxel_depth = cam_to_voxel_depth.reshape(self.voxel_x.shape)
-        occluded = (cam_to_voxel_depth - voxel_depth >= 0.) & (voxel_depth > 0.) & valid_mask
+        for i in range(len(pt)):
+            voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0)).reshape(-1,3)
+            # voxel_vecs = np.concatenate([self.voxel_x, self.voxel_y, self.voxel_z], axis=3)
+            voxel_vecs = voxel_vecs + pt[i].reshape(1,-1)  # get the middle point
+            voxel_vecs = voxel_vecs * self.resol
+            transformed_voxels = self.transform[:3,:3].dot(voxel_vecs.T).T + self.transform[:3,3]
+            # get to the image space
+            cam_transform = np.linalg.inv(camera_extrinsics)
+            transformed_voxels = cam_transform[:3,:3].dot(transformed_voxels.T).T + cam_transform[:3,3]
+
+            # cam_to_voxel_dist = np.linalg.norm(transformed_voxels, axis=1)
+            cam_to_voxel_depth = np.array(transformed_voxels[:,2])
+            # intrinsics
+            cam_intrinsics = camera_intrinsics
+            fx = cam_intrinsics[0][0]
+            fy = cam_intrinsics[1][1]
+            cx = cam_intrinsics[0][2]
+            cy = cam_intrinsics[1][2]
+            transformed_voxels[:,0] = transformed_voxels[:,0] / transformed_voxels[:,2] * fx + cx
+            transformed_voxels[:,1] = transformed_voxels[:,1] / transformed_voxels[:,2] * fy + cy
+            transformed_voxels = np.floor(transformed_voxels).astype(int)
+            voxel_depth = np.zeros((len(transformed_voxels)))
+            valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
+                            (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
+            voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
+            valid_mask = valid_mask.reshape(self.voxel_x.shape)
+            voxel_depth = voxel_depth.reshape(self.voxel_x.shape)
+
+            cam_to_voxel_depth = cam_to_voxel_depth.reshape(self.voxel_x.shape)
+            occluded = occluded | ((cam_to_voxel_depth - voxel_depth >= 0.) & (voxel_depth > 0.) & valid_mask)
         # print(occluded.astype(int).sum() / valid_mask.astype(int).sum())
         del cam_to_voxel_depth
         del voxel_depth
+        del voxel_vecs
+        del transformed_voxels
+        del valid_mask        
 
         return occluded
 
@@ -391,7 +401,6 @@ class Occlusion():
 
         # o3d.visualization.draw_geometries([frame, pcds])           
 
-
         transformed_voxel_indices[:,0] = transformed_voxel_indices[:,0] / transformed_voxel_indices[:,2] * fx + cx
         transformed_voxel_indices[:,1] = transformed_voxel_indices[:,1] / transformed_voxel_indices[:,2] * fy + cy
         depth = transformed_voxel_indices[:,2]
@@ -403,6 +412,10 @@ class Occlusion():
         valid_indices = (transformed_voxel_indices[:,0] >= 0) & (transformed_voxel_indices[:,0]<img_shape[1]) & \
                         (transformed_voxel_indices[:,1] >= 0) & (transformed_voxel_indices[:,1]<img_shape[0])
         transformed_voxel_indices = transformed_voxel_indices[valid_indices] 
+
+        if len(transformed_voxel_indices) == 0:
+            return 0
+
         depth = depth[valid_indices]
         voxel_indices = voxel_indices[valid_indices]
         

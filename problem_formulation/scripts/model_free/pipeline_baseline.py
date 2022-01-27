@@ -23,7 +23,13 @@ import matplotlib.pyplot as plt
 import gc
 
 import motion_planner
+import os
+import psutil
 
+import multiprocessing
+import objgraph
+
+import time
 LOG = 1
 SNAPSHOT = 0
 
@@ -133,7 +139,7 @@ class PipelineBaseline():
         # self.prev_objects = objects
         # self.prev_obj_poses = obj_poses
         # self.prev_target_obj_pose = target_obj_pose
-
+        self.manager = multiprocessing.Manager()
 
 
     def transform_obj_pybullet(self, transform, move_obj_pybullet_id):
@@ -155,6 +161,7 @@ class PipelineBaseline():
         # given a joint_dict_list, set the robot joint values at those locations
         for i in range(len(joint_dict_list)):
             self.robot.set_joint_from_dict(joint_dict_list[i])
+            # time.sleep(0.1)
             # input("next point...")
 
     def execute_traj_with_obj(self, joint_dict_list, move_obj_idx, move_obj_pybullet_id):
@@ -186,6 +193,9 @@ class PipelineBaseline():
             obj_recon_transform = transform.dot(obj_recon_in_link)
 
             self.transform_obj_from_pose_both(obj_recon_transform, move_obj_idx, move_obj_pybullet_id)
+            # time.sleep(0.1)
+
+            
             # # transform the object
             # pybullet_obj_transform = transform.dot(pybullet_obj_in_link)
             # quat = tf.quaternion_from_matrix(pybullet_obj_transform) # w x y z
@@ -196,6 +206,9 @@ class PipelineBaseline():
             
     def pipeline_sim(self):
         # sense & perceive
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         self.perception.pipeline_sim(self.camera, [self.robot.robot_id], self.workspace.component_ids)
 
         # update data
@@ -204,6 +217,9 @@ class PipelineBaseline():
         self.prev_occupied_label = self.perception.slam_system.occupied_label_t
         self.prev_occluded_dict = self.perception.slam_system.filtered_occluded_dict
         self.prev_occupied_dict = self.perception.slam_system.occupied_dict_t
+
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('pipeline_sim increment memory: ', memory_after - memory_before)
 
 
     def sense_object(self, obj_id, obj_pybullet_id, center_position):
@@ -214,6 +230,9 @@ class PipelineBaseline():
         # pixel is unseen if 
         # 1. tsdf<=min is seen first
         # 2. tsdf>=max is seen first then directly jump to tsdf<=min
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
 
         obj = self.perception.slam_system.objects[obj_id]        
         n_samples = 10
@@ -249,6 +268,11 @@ class PipelineBaseline():
         self.transform_obj_from_pose_both(max_net_transform, obj_id, obj_pybullet_id)
         self.perception.sense_object(obj_id, self.camera, [self.robot.robot_id], self.workspace.component_ids)
         obj.set_sensed()
+
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('sense_object increment memory: ', memory_after - memory_before)
+
+
 
     def mask_pcd_with_padding(self, occ_filter, pcd_indices, padding=1):
         """
@@ -314,6 +338,7 @@ class PipelineBaseline():
         # occlusion_filter = self.prev_occluded
         occlusion_filter = np.array(self.prev_occluded)
 
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
         for id in occlusion_obj_list:
             # if id == move_obj_idx:
@@ -325,6 +350,11 @@ class PipelineBaseline():
             if id not in ignore_occupied_list:
                 occupied_filter = occupied_filter | (self.prev_occupied_dict[id])
 
+
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('set_collision_env obtain occlusion and occupied increment memory: ', memory_after - memory_before)
+
+
         # occlusion_filter[self.prev_occluded_dict[move_obj_idx]] = 0
 
         # for id in ignore_occlusion_list:
@@ -334,6 +364,9 @@ class PipelineBaseline():
 
         # mask out the ignored obj        
         if padding > 0:
+
+            memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+
             for id in ignore_occupied_list:
                 pcd = self.perception.slam_system.objects[id].sample_conservative_pcd()
                 obj_transform = self.perception.slam_system.objects[id].transform
@@ -351,32 +384,46 @@ class PipelineBaseline():
                 occupied_filter = self.mask_pcd_xy_with_padding(occupied_filter, pcd, padding)
                 del pcd
 
+            memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('set_collision_env sample pcd and padding increment memory: ', memory_after - memory_before)
+
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         self.motion_planner.set_collision_env(self.perception.slam_system.occlusion, 
                                             occlusion_filter, occupied_filter)
         del occlusion_filter
         del occupied_filter
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('pipeline_baseline after calling set_collision_env increment memory: ', memory_after - memory_before)
+
+        # obj = objgraph.by_type('list')[10000]
+        # objgraph.show_backrefs([obj], max_depth=10)
+        # input('after showing backrefs...')
+        gc.collect()
+        objgraph.show_growth(limit=10)
+
 
     def plan_to_suction_pose(self, obj_id, suction_pose_in_obj, suction_joint, start_joint_dict):
-        self.motion_planner = motion_planner.MotionPlanner(self.robot, self.workspace)
+        # self.motion_planner = motion_planner.MotionPlanner(self.robot, self.workspace)
         self.set_collision_env(list(self.prev_occluded_dict.keys()), [obj_id], [obj_id], padding=5)
         obj = self.perception.slam_system.objects[obj_id]
-        suction_joint_dict_list = self.motion_planner.suction_plan(start_joint_dict, obj.transform.dot(suction_pose_in_obj), suction_joint, self.robot)
+        suction_joint_dict_list = self.motion_planner.suction_plan(start_joint_dict, obj.transform.dot(suction_pose_in_obj), 
+                                                                    suction_joint, self.robot, workspace=self.workspace)
         if len(suction_joint_dict_list) == 0:
             return [], []
             # return [], []
         # lift up
         relative_tip_pose = np.eye(4)
         relative_tip_pose[:3,3] = np.array([0,0,0.05]) # lift up by 0.05
-        joint_dict_list = self.motion_planner.straight_line_motion(suction_joint_dict_list[-1], obj.transform.dot(suction_pose_in_obj), relative_tip_pose, self.robot)
+        joint_dict_list = self.motion_planner.straight_line_motion(suction_joint_dict_list[-1], obj.transform.dot(suction_pose_in_obj), 
+                                                                relative_tip_pose, self.robot, workspace=self.workspace)
         if len(joint_dict_list) == 0:
             return [], []
-
 
         return suction_joint_dict_list, joint_dict_list
 
     def plan_to_intermediate_pose(self, move_obj_idx, suction_pose_in_obj, 
                                     intermediate_obj_pose, intermediate_joint, start_joint_dict):
-        gc.collect()            
 
         intermediate_joint_dict_list_1 = [start_joint_dict]
         if not self.perception.slam_system.objects[move_obj_idx].sensed:
@@ -407,14 +454,27 @@ class PipelineBaseline():
             relative_tip_pose[1:3,3] = 0 # only keep the x value
             self.motion_planner.clear_octomap()
             self.motion_planner.wait(2.0)
-            
+
+            memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('memory before: ', memory_before)
+
             joint_dict_list = self.motion_planner.straight_line_motion(start_joint_dict, current_tip_pose, relative_tip_pose, self.robot,
-                                                                    collision_check=True)
+                                                                    collision_check=True, workspace=self.workspace)
+            memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('straight_line_motion increment memory: ', memory_after - memory_before)
+
 
             intermediate_joint_dict_list_1 = joint_dict_list
 
         # reset collision env: to remove the object to be moved
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=5)
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('set_collision_env increment memory: ', memory_after - memory_before)
+        print('after set_collision_env..')
+        objgraph.show_growth(limit=10)
 
 
         joint_dict_list = self.motion_planner.suction_with_obj_plan(intermediate_joint_dict_list_1[-1], suction_pose_in_obj, 
@@ -426,6 +486,8 @@ class PipelineBaseline():
         # self.execute_traj_with_obj(joint_dict_list, move_obj_idx, move_obj_pybullet_id)
         del occupied_filter
 
+        gc.collect()            
+
         if len(joint_dict_list) == 0:
             return []
         intermediate_joint_dict_list = intermediate_joint_dict_list_1 + joint_dict_list
@@ -434,7 +496,11 @@ class PipelineBaseline():
 
 
     def obj_sense_plan(self, move_obj_idx, move_obj_pybullet_id, tip_pose_in_obj):
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         planning_info = dict()
+
         planning_info['obj_i'] = move_obj_idx
         planning_info['pybullet_obj_i'] = move_obj_pybullet_id
         planning_info['pybullet_obj_pose'] = self.pybullet_obj_poses[move_obj_pybullet_id]
@@ -452,13 +518,37 @@ class PipelineBaseline():
         planning_info['seg_img'] = self.perception.seg_img==move_obj_pybullet_id
         planning_info['camera'] = self.camera
 
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('creating planning_info increment memory: ', memory_after - memory_before)
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         sense_pose, selected_tip_in_obj, tip_pose, start_joint_angles, joint_angles = \
             pipeline_utils.sample_sense_pose(**planning_info)
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('sample_sense_pose increment memory: ', memory_after - memory_before)
+
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
 
         self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx])
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('set_collision_env increment memory: ', memory_after - memory_before)
+        print('after set_collision_env..')
+        objgraph.show_growth(limit=10)
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
 
         joint_dict_list = self.motion_planner.suction_with_obj_plan(self.robot.joint_dict, tip_pose_in_obj, joint_angles, self.robot, 
                                                 move_obj_idx, self.perception.slam_system.objects)
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('suction_with_obj_plan increment memory: ', memory_after - memory_before)
+
+        del planning_info
+
         return joint_dict_list
 
     def plan_to_placement_pose(self, move_obj_idx, move_obj_pybullet_id, tip_pose_in_obj, start_obj_pose, 
@@ -482,6 +572,7 @@ class PipelineBaseline():
             # select where to place
             planning_info['obj_i'] = move_obj_idx
             move_obj_transform, back_joint_angles = pipeline_utils.placement_pose_generation(**planning_info)
+            del planning_info
             # voxel1 = visualize_voxel(self.perception.slam_system.occlusion.voxel_x, 
             #                         self.perception.slam_system.occlusion.voxel_y,
             #                         self.perception.slam_system.occlusion.voxel_z,
@@ -592,12 +683,52 @@ class PipelineBaseline():
                 break
 
         return placement_joint_dict_list, reset_joint_dict_list
+    
+    def wrap_angle(self, angle, ll, ul):
+        angle = angle % (np.pi*2)
+        if angle > np.pi:
+            angle = angle - np.pi*2
+        if angle < ll:
+            angle = ll
+        if angle > ul:
+            angle = ul
+        return angle
+    
+    def generate_rot_traj(self, start_joint_dict, waypoint, dtheta=5*np.pi/180):
+        start_angle = start_joint_dict[self.robot.joint_names[7]]
+        change = waypoint - start_angle
+        print('start_angle: ', start_angle)
+        print('change: ', change)
+        ntheta = int(np.ceil(np.abs(change) / dtheta))
+        print('ntheta: ', ntheta)
+        dtheta = change / ntheta
+
+        traj = []
+        joint_dict = copy.deepcopy(start_joint_dict)
+        traj.append(joint_dict)
+        angle = start_angle
+        for i in range(ntheta):
+            joint_dict = copy.deepcopy(joint_dict)
+            joint_dict[self.robot.joint_names[7]] += dtheta
+            traj.append(joint_dict)
+
+        print('traj: ')
+        print(traj)
+        return traj
+
+
 
     def move_and_sense(self, move_obj_idx, move_obj_pybullet_id, moved_objects):
         """
         move the valid object out of the workspace, sense it and the environment, and place back
         """
+
+        self.motion_planner.clear_octomap()
+        self.motion_planner.wait(2.0)
+
+
         _, suction_poses_in_obj, suction_joints = self.pre_move(move_obj_idx, moved_objects)
+
 
         # # obj_id, obj, robot, workspace, occlusion, occlusion_label, occupied_label
         # planning_info = dict()
@@ -639,9 +770,19 @@ class PipelineBaseline():
         planning_info['occupied_label'] = self.prev_occupied_label
         planning_info['seg_img'] = self.perception.seg_img==move_obj_pybullet_id
         planning_info['camera'] = self.camera
+
+
+        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('memory before: ', memory_before)
+
         intermediate_pose, suction_poses_in_obj, suction_joints, intermediate_joints = \
             pipeline_utils.generate_intermediate_poses(**planning_info)
+        del planning_info
         # generate intermediate pose for the obj with valid suction pose
+
+        return_dict = self.manager.dict()
+        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        print('generate_intermediate_poses increment memory: ', memory_after - memory_before)
 
 
         for i in range(len(suction_poses_in_obj)):
@@ -649,16 +790,33 @@ class PipelineBaseline():
             suction_joint = suction_joints[i]
             intermediate_joint = intermediate_joints[i]
 
+            memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('memory before: ', memory_before)
+
             pick_joint_dict_list, lift_joint_dict_list = \
                 self.plan_to_suction_pose(move_obj_idx, suction_pose_in_obj, suction_joint, self.robot.joint_dict)  # internally, plan_to_pre_pose, pre_to_suction, lift up
 
+            # self.plan_to_suction_pose(move_obj_idx, suction_pose_in_obj, suction_joint, self.robot.joint_dict, return_dict)  # internally, plan_to_pre_pose, pre_to_suction, lift up
+
+            memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('plan_to_suction_pose increment memory: ', memory_after - memory_before)
+            print('after plan_to_suction_pose..')
+            objgraph.show_growth(limit=10)
 
 
             if len(pick_joint_dict_list) == 0:
                 continue
 
+            memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('memory before: ', memory_before)
+
             retreat_joint_dict_list = self.plan_to_intermediate_pose(move_obj_idx, suction_pose_in_obj, 
                                     intermediate_pose, intermediate_joint, lift_joint_dict_list[-1])
+            memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+            print('plan_to_intermediate_pose increment memory: ', memory_after - memory_before)
+            print('after plan_to_intermediate_pose..')
+            objgraph.show_growth(limit=10)
+
             if len(retreat_joint_dict_list) == 0:
                 continue
 
@@ -670,10 +828,64 @@ class PipelineBaseline():
             self.pipeline_sim()  # sense the environmnet
             
             for k in range(8):
+                memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                print('memory before: ', memory_before)
+
                 obj_sense_joint_dict_list = self.obj_sense_plan(move_obj_idx, move_obj_pybullet_id, suction_pose_in_obj)
+                memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                print('obj_sense_plan increment memory: ', memory_after - memory_before)
+                print('after obj_sense_plan..')
+                objgraph.show_growth(limit=10)
+
                 self.execute_traj_with_obj(obj_sense_joint_dict_list, move_obj_idx, move_obj_pybullet_id)
                 
+
+                memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                print('memory before: ', memory_before)
+
                 self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                print('sense_object increment memory: ', memory_after - memory_before)
+
+                if len(obj_sense_joint_dict_list) == 0:
+                    print('obj_sense_joint_dict_list has length 0')
+                    continue
+
+                self.pipeline_sim()
+
+                # rotate the object 360 degrees so we get a better sensing
+                ul = self.robot.upper_lim[7]
+                ll = self.robot.lower_lim[7]
+                current_angle = self.robot.joint_vals[7]
+                waypoint1 = current_angle + np.pi/2
+                waypoint2 = current_angle + np.pi
+                waypoint3 = current_angle - np.pi/2
+                
+                # make sure the waypoints are within limit
+                # first put in the range of -pi to pi
+                waypoint1 = self.wrap_angle(waypoint1, ll, ul)
+                waypoint2 = self.wrap_angle(waypoint2, ll, ul)
+                waypoint3 = self.wrap_angle(waypoint3, ll, ul)
+
+                # generate rotation trajectory
+                last_joint_dict = obj_sense_joint_dict_list[-1]
+                traj1 = self.generate_rot_traj(last_joint_dict, waypoint1)
+                self.execute_traj_with_obj(traj1, move_obj_idx, move_obj_pybullet_id)
+                self.pipeline_sim()
+
+                traj2 = self.generate_rot_traj(traj1[-1], waypoint2)
+                self.execute_traj_with_obj(traj2, move_obj_idx, move_obj_pybullet_id)
+                self.pipeline_sim()
+
+                traj3 = self.generate_rot_traj(traj2[-1], waypoint3)
+                self.execute_traj_with_obj(traj3, move_obj_idx, move_obj_pybullet_id)
+                self.pipeline_sim()
+
+
+                traj4 = self.generate_rot_traj(traj3[-1], current_angle)
+                self.execute_traj_with_obj(traj4, move_obj_idx, move_obj_pybullet_id)
+
+
                 self.perception.slam_system.objects[move_obj_idx].set_sensed()
                 self.pipeline_sim()
                 # input("after sensing")        
@@ -693,11 +905,126 @@ class PipelineBaseline():
             planning_info['suction_joint_dict_list'] = pick_joint_dict_list
 
             placement_joint_dict_list, reset_joint_dict_list = self.plan_to_placement_pose(**planning_info)
+            del planning_info
             self.execute_traj_with_obj(placement_joint_dict_list, move_obj_idx, move_obj_pybullet_id)
             self.execute_traj(reset_joint_dict_list)
             print('length of reset_joint_dict_list: ', len(reset_joint_dict_list))
             return True
         return False
+
+    def obtain_straight_blocking_mask(self, target_obj):
+        target_pcd = target_obj.sample_conservative_pcd()
+        obj_transform = target_obj.transform
+        transform = self.perception.slam_system.occlusion.transform
+        transform = np.linalg.inv(transform)
+        target_pcd = obj_transform[:3,:3].dot(target_pcd.T).T + obj_transform[:3,3]
+        target_pcd = transform[:3,:3].dot(target_pcd.T).T + transform[:3,3]
+        target_pcd = target_pcd / self.perception.slam_system.occlusion.resol
+        target_pcd = np.floor(target_pcd).astype(int)
+
+        blocking_mask = np.zeros(self.perception.slam_system.occlusion.voxel_x.shape).astype(bool)
+        valid_filter = (target_pcd[:,0]>=0) & (target_pcd[:,0]<blocking_mask.shape[0]) & \
+                        (target_pcd[:,1]>=0) & (target_pcd[:,1]<blocking_mask.shape[1]) & \
+                        (target_pcd[:,2]>=0) & (target_pcd[:,2]<blocking_mask.shape[2])                            
+        target_pcd = target_pcd[valid_filter]
+
+        blocking_mask[target_pcd[:,0],target_pcd[:,1],target_pcd[:,2]] = 1
+        blocking_mask = blocking_mask[::-1,:,:].cumsum(axis=0)
+        blocking_mask = blocking_mask[::-1,:,:] > 0
+
+        # remove interior of target_pcd
+        blocking_mask = self.mask_pcd_xy_with_padding(blocking_mask, target_pcd, padding=1)
+
+        del target_pcd
+        del valid_filter
+
+        return blocking_mask
+
+    def obtain_visibility_blocking_mask(self, target_obj):
+        camera_extrinsics = self.camera.info['extrinsics']
+        cam_transform = np.linalg.inv(camera_extrinsics)
+        camera_intrinsics = self.camera.info['intrinsics']
+        occlusion = self.perception.slam_system.occlusion
+
+        pcd = target_obj.sample_conservative_pcd()
+        obj_transform = target_obj.transform
+        pcd = obj_transform[:3,:3].dot(pcd.T).T + obj_transform[:3,3]
+        
+        transformed_pcd = cam_transform[:3,:3].dot(pcd.T).T + cam_transform[:3,3]
+        fx = camera_intrinsics[0][0]
+        fy = camera_intrinsics[1][1]
+        cx = camera_intrinsics[0][2]
+        cy = camera_intrinsics[1][2]
+        transformed_pcd[:,0] = transformed_pcd[:,0] / transformed_pcd[:,2] * fx + cx
+        transformed_pcd[:,1] = transformed_pcd[:,1] / transformed_pcd[:,2] * fy + cy
+        depth = transformed_pcd[:,2]
+        transformed_pcd = transformed_pcd[:,:2]
+        transformed_pcd = np.floor(transformed_pcd).astype(int)
+        max_j = transformed_pcd[:,0].max()+1
+        max_i = transformed_pcd[:,1].max()+1
+        
+        vis_mask = np.zeros(self.perception.slam_system.occlusion.voxel_x.shape).astype(bool)
+        if max_i <= 0 or max_j <= 0:
+            # not in the camera view
+            del pcd
+            del transformed_pcd
+            del depth
+            return np.zeros(occlusion.voxel_x.shape).astype(bool)
+
+        unique_indices = np.unique(transformed_pcd, axis=0)
+        unique_valid = (unique_indices[:,0] >= 0) & (unique_indices[:,1] >= 0)
+        unique_indices = unique_indices[unique_valid]
+        unique_depths = np.zeros(len(unique_indices))
+        for i in range(len(unique_indices)):
+            unique_depths[i] = depth[(transformed_pcd[:,0]==unique_indices[i,0])&(transformed_pcd[:,1]==unique_indices[i,1])].min()
+        depth_img = np.zeros((max_i, max_j)).astype(float)
+        depth_img[unique_indices[:,1],unique_indices[:,0]] = unique_depths
+        depth_img = cv2.medianBlur(np.float32(depth_img), 5)
+
+        # find voxels that can project to the depth
+        pt = np.array([[0,0,0],[0,0,1],[0,1,0],[0,1,1],[1,0,0],[1,0,1],[1,1,0],[1,1,1],[0.5,0.5,0.5]])
+        
+        for i in range(len(pt)):
+            voxel_vecs = np.array([occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z]).transpose((1,2,3,0)).reshape(-1,3)
+            voxel_vecs = voxel_vecs + pt[i].reshape(1,-1)  # get the middle point
+            voxel_vecs = voxel_vecs * occlusion.resol
+            transformed_voxels = occlusion.transform[:3,:3].dot(voxel_vecs.T).T + occlusion.transform[:3,3]
+            # get to the image space
+            transformed_voxels = cam_transform[:3,:3].dot(transformed_voxels.T).T + cam_transform[:3,3]
+
+            # cam_to_voxel_dist = np.linalg.norm(transformed_voxels, axis=1)
+            cam_to_voxel_depth = np.array(transformed_voxels[:,2])
+            # intrinsics
+            cam_intrinsics = camera_intrinsics
+            fx = cam_intrinsics[0][0]
+            fy = cam_intrinsics[1][1]
+            cx = cam_intrinsics[0][2]
+            cy = cam_intrinsics[1][2]
+            transformed_voxels[:,0] = transformed_voxels[:,0] / transformed_voxels[:,2] * fx + cx
+            transformed_voxels[:,1] = transformed_voxels[:,1] / transformed_voxels[:,2] * fy + cy
+            transformed_voxels = np.floor(transformed_voxels).astype(int)
+            voxel_depth = np.zeros((len(transformed_voxels)))
+            valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
+                            (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
+            voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
+            valid_mask = valid_mask.reshape(occlusion.voxel_x.shape)
+            voxel_depth = voxel_depth.reshape(occlusion.voxel_x.shape)
+
+            cam_to_voxel_depth = cam_to_voxel_depth.reshape(occlusion.voxel_x.shape)
+            vis_mask = vis_mask | ((cam_to_voxel_depth - voxel_depth <= 0.) & (voxel_depth > 0.) & valid_mask)
+
+        # print(occluded.astype(int).sum() / valid_mask.astype(int).sum())
+        del cam_to_voxel_depth
+        del voxel_depth
+        del valid_mask
+        del transformed_voxels
+        del voxel_vecs
+        del pcd
+        del transformed_pcd
+        del depth
+
+        return vis_mask
+
 
 
     def pre_move(self, target_obj_i, moved_objects):
@@ -710,7 +1037,7 @@ class PipelineBaseline():
         valid_pts, valid_orientations, valid_joints = \
             pose_generation.grasp_pose_generation(target_obj_i, target_obj, self.robot, self.workspace, 
                                                   self.perception.slam_system.occlusion, 
-                                                  self.prev_occlusion_label, self.prev_occupied_label, sample_n=10)
+                                                  self.prev_occlusion_label, self.prev_occupied_label, sample_n=20)
 
         # * check each sampled pose to see if it's colliding with any objects. Create blocking object set
         total_blocking_objects = []
@@ -740,23 +1067,24 @@ class PipelineBaseline():
         blocking_mask = blocking_mask[::-1,:,:].cumsum(axis=0)
         blocking_mask = blocking_mask[::-1,:,:] > 0
 
+        # * add visibility blocking constraint to the mask
+        blocking_mask = blocking_mask | self.obtain_visibility_blocking_mask(target_obj)
+
         # remove interior of target_pcd
         blocking_mask = self.mask_pcd_xy_with_padding(blocking_mask, target_pcd, padding=1)
 
         # # visualize the blocking mask
-        # vis_voxels = []
-        # for obj_i, obj in self.perception.slam_system.objects.items():
-        #     occupied_i = self.prev_occupied_dict[obj_i]
-        #     vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occupied_i, [0,0,1])
-        #     vis_voxels.append(vis_voxel)
+        vis_voxels = []
+        for obj_i, obj in self.perception.slam_system.objects.items():
+            occupied_i = self.prev_occupied_dict[obj_i]
+            vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occupied_i, [0,0,1])
+            vis_voxels.append(vis_voxel)
 
-        # vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, blocking_mask, [1,0,0])
-        # o3d.visualization.draw_geometries(vis_voxels + [vis_voxel])
-                
+        vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, blocking_mask, [1,0,0])
+        o3d.visualization.draw_geometries(vis_voxels + [vis_voxel])
+        
 
-
-
-
+        print('number of valid orientations: ', len(valid_orientations))
 
         for i in range(len(valid_orientations)):
             # obtain robot pcd at the given joint
@@ -822,7 +1150,8 @@ class PipelineBaseline():
                 if (occupied_i & blocking_mask).sum() > 0:
                     blocking_objects.append(obj_i)
                     valid = False
-                
+            # * also make sure there is no object in the visibility constraint
+                            
 
             if valid:
                 # we found one grasp pose with no collisions. Move and Sense
@@ -836,15 +1165,15 @@ class PipelineBaseline():
 
             # if the blocking objects contain unmoved objects, then give up on this one
             blocking_objects = list(set(blocking_objects))
-            print('blocking object: ', blocking_objects)
-            print('moved_objects: ', moved_objects)
+            # print('blocking object: ', blocking_objects)
+            # print('moved_objects: ', moved_objects)
             # input('seeing blocking object')
             if len(set(blocking_objects) - set(moved_objects)) == 0:
                 total_blocking_objects.append(blocking_objects)
                 total_blocking_object_nums.append(len(blocking_objects))
                 joint_indices.append(i)
 
-        print('total_blocking_objects: ', total_blocking_objects)
+        # print('total_blocking_objects: ', total_blocking_objects)
 
         if len(res_orientations) > 0:
             return res_pts, res_orientations, res_joints
@@ -918,8 +1247,17 @@ class PipelineBaseline():
         robot_collision_voxel = np.array(collision_voxel).astype(bool)
         robot_collision_voxel[transformed_rpcd[:,0],transformed_rpcd[:,1],transformed_rpcd[:,2]] = 1
 
+        # add collision to make sure we can extract the object in straight-line
+        blocking_mask = self.obtain_straight_blocking_mask(target_obj)
+        robot_collision_voxel = robot_collision_voxel | blocking_mask
+
+        # add visibility "collision" to make sure the goal does not hide potential object to be revealed
+        blocking_mask = self.obtain_visibility_blocking_mask(target_obj)
+        robot_collision_voxel = robot_collision_voxel | blocking_mask
+
+
         # * rearrange the blocking objects
-        self.rearrange(blocking_objects, moveable_objs, collision_voxel, robot_collision_voxel)
+        res = self.rearrange(blocking_objects, moveable_objs, collision_voxel, robot_collision_voxel)
 
         del collision_voxel
         del robot_collision_voxel
@@ -927,7 +1265,12 @@ class PipelineBaseline():
         del target_pcd
         del valid_filter
 
-        return [valid_pt], [valid_orientation], [valid_joint]
+        if res:
+            # update the occlusion and occupied space so motion planning won't be messed up
+            self.pipeline_sim()
+            return [valid_pt], [valid_orientation], [valid_joint]
+        else:
+            return [], [], []
 
 
     def rearrange(self, obj_ids, moveable_obj_ids, collision_voxel, robot_collision_voxel):
@@ -952,15 +1295,21 @@ class PipelineBaseline():
                                             self.perception.slam_system.occlusion.resol,
                                             self.robot, self.workspace, self.perception.slam_system.occlusion,
                                             self.motion_planner)
-        total_obj_ids = obj_ids + moveable_obj_ids
-        # execute the rearrangement plan
-        for i in range(len(searched_objs)):
-            move_obj_idx = total_obj_ids[searched_objs[i]]
-            move_obj_pybullet_id = self.perception.data_assoc.obj_ids_reverse[move_obj_idx]
-            self.execute_traj(transfer_trajs[i])     
-            self.execute_traj_with_obj(searched_trajs[i], move_obj_idx, move_obj_pybullet_id)
-        # reset
-        self.execute_traj(reset_traj)        
+        # plt.ioff()
+        success = False
+        if searched_objs is not None:
+            total_obj_ids = obj_ids + moveable_obj_ids
+            # execute the rearrangement plan
+            for i in range(len(searched_objs)):
+                move_obj_idx = total_obj_ids[searched_objs[i]]
+                move_obj_pybullet_id = self.perception.data_assoc.obj_ids_reverse[move_obj_idx]
+                self.execute_traj(transfer_trajs[i])     
+                self.execute_traj_with_obj(searched_trajs[i], move_obj_idx, move_obj_pybullet_id)
+            # reset
+            self.execute_traj(reset_traj)
+            success = True
+        else:
+            success = False
         input('after rearrange...')
 
         del obj_pcds
@@ -970,6 +1319,8 @@ class PipelineBaseline():
         del moved_objs
         del moveable_objs
 
+        return success
+
     def run_pipeline(self, iter_n=10):
         # select object
         #TODO
@@ -977,7 +1328,9 @@ class PipelineBaseline():
         moved_objects = []
         orders = [5, 0, 6, 3, 2]
         iter_i = 0
+
         while True:
+            print('iteration: ', iter_i)
             gc.collect()            
             # planning_info = dict()
             # planning_info['objects'] = self.perception.slam_system.objects
@@ -995,16 +1348,38 @@ class PipelineBaseline():
             # select object: active objects but not moved
             active_objs = []
             for obj_id, obj in self.perception.slam_system.objects.items():
+                # check if the object becomes active when the hiding object have all been moved
+                if len(obj.obj_hide_set - set(moved_objects)) == 0:
+                    obj.set_active()
+
                 if obj.active:
                     active_objs.append(obj_id)
             valid_objects = set(active_objs) - set(moved_objects)
             valid_objects = list(valid_objects)
 
             move_obj_idx = np.random.choice(valid_objects)
-            move_obj_idx = orders[iter_i]
+            # if iter_i < len(orders):
+            #     move_obj_idx = orders[iter_i]
+
             # move_obj_idx = 0
             iter_i += 1
             move_obj_pybullet_id = self.perception.data_assoc.obj_ids_reverse[move_obj_idx]
+            obj_id_to_pybullet_id_dict = self.perception.data_assoc.obj_ids_reverse
+            # obtain the pybullet id for moved set and valid set
+            moved_pybullet_ids = []
+            valid_pybullet_ids = []
+            for obj_i in moved_objects:
+                moved_pybullet_ids.append(obj_id_to_pybullet_id_dict[obj_i])
+            for obj_i in valid_objects:
+                valid_pybullet_ids.append(obj_id_to_pybullet_id_dict[obj_i])
+
+            pybullet_obj_pose_list = [self.pybullet_obj_poses[obj_id] for obj_id in self.pybullet_obj_ids]
+            update_occlusion_graph(self.pybullet_obj_ids, pybullet_obj_pose_list, moved_pybullet_ids, valid_pybullet_ids, 
+                                   move_obj_pybullet_id, self.camera, self.pid)
+            input('after viewing the occlusion graph...')
+
+            objgraph.show_growth(limit=10)
+
             res = self.move_and_sense(move_obj_idx, move_obj_pybullet_id, moved_objects)
             if res == True:
                 moved_objects.append(move_obj_idx)
