@@ -324,7 +324,7 @@ class Robot():
                 valid = False
                 # show the result
                 self.set_joints_without_memorize(joint_dict)
-                input('show next...')
+                # input('show next...')
                 self.set_joints_without_memorize(self.joint_vals)
 
 

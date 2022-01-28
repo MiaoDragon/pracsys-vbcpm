@@ -34,7 +34,7 @@ class SLAMPerception():
         # self.filtered_occupied_label = filtered_occupied_label
         self.filtered_occluded_dict = None
 
-    def perceive(self, depth_img, color_img, seg_img, assoc, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids):
+    def perceive(self, depth_img, color_img, seg_img, assoc, reverse_assoc, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids):
         """
         given depth img and color img from camera, and segmented and labeld images from 
         Segmentation and Data Association, update occlusion and object model
@@ -85,7 +85,8 @@ class SLAMPerception():
             # Added condition check to see whether the object is hidden by others
             obj_hide_set = obj_hide_sets[obj_id]
             for i in range(len(obj_hide_set)):
-                seg_depth_img[seg_img==obj_hide_set[i]] = 0
+                # get the seg_id from the hide_obj_id
+                seg_depth_img[seg_img==reverse_assoc[obj_hide_set[i]]] = 0
 
 
             seg_color_img = np.array(color_img)
@@ -252,7 +253,8 @@ class SLAMPerception():
         del obj_pcds
         del obj_opt_pcds
 
-        del seg_depth_img
+        if len(assoc) > 0:
+            del seg_depth_img
         
 
 

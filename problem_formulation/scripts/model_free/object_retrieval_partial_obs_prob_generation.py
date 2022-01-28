@@ -30,7 +30,7 @@ from perception_pipeline import PerceptionPipeline
 import transformations as tf
 
 from visual_utilities import *
-def random_one_problem(scene, level, num_objs, num_hiding_objs):
+def random_one_problem(scene, level, num_objs, num_hiding_objs, safety_padding=0.01):
     """
     generate one random instance of the problem
     last one object is the target object
@@ -159,7 +159,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                             collision = True
                             break
                     for obj_id in obj_ids:
-                        contacts = p.getClosestPoints(bid, obj_id, distance=0.,physicsClientId=pid)
+                        # add some distance between objects
+                        contacts = p.getClosestPoints(bid, obj_id, distance=safety_padding,physicsClientId=pid)
                         if len(contacts):
                             collision = True
                             break                    
@@ -224,7 +225,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                             collision = True
                             break
                     for obj_id in obj_ids:
-                        contacts = p.getClosestPoints(bid, obj_id, distance=0.,physicsClientId=pid)
+                        contacts = p.getClosestPoints(bid, obj_id, distance=safety_padding,physicsClientId=pid)
                         if len(contacts):
                             collision = True
                             break                    

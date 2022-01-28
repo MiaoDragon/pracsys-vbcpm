@@ -50,7 +50,6 @@ class MotionPlanner():
         self.scene_interface.remove_world_object('suction_object')
         rospy.sleep(1.0)
         self.clear_octomap()
-        rospy.sleep(2.0)
 
         self.robot = robot
         self.workspace = workspace
@@ -109,6 +108,7 @@ class MotionPlanner():
             sys.exit(1)
 
         gc.collect()
+        rospy.sleep(2.0)
 
     def wait(self, time):
         rospy.sleep(time)
@@ -117,7 +117,7 @@ class MotionPlanner():
         # pcd -> octomap
         # clear environment first
         self.clear_octomap()
-        rospy.sleep(2.0)
+        # rospy.sleep(2.0)
 
         # collision_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
         #                                  occluded | occupied, [1,0,0])
@@ -147,7 +147,7 @@ class MotionPlanner():
         memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
         self.clear_octomap()
-        rospy.sleep(2.0)
+        # rospy.sleep(2.0)
         memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         print('clear_octomap increment memory: ', memory_after - memory_before)
 
@@ -243,7 +243,7 @@ class MotionPlanner():
         """
         # * generate pre_suction_pose from suction_pose by moving the gripper back
         self.scene_interface.remove_world_object('suction_object')
-        rospy.sleep(1.0)
+        # rospy.sleep(1.0)
         pre_pose_dist = 0.10
         suction_pos = suction_pose[:3,3]
         retreat_vec = -suction_pose[:3,2]  # z vec
@@ -302,7 +302,7 @@ class MotionPlanner():
         obj_transform = start_tip_pose.dot(np.linalg.inv(tip_pose_in_obj))
 
         self.scene_interface.remove_world_object('suction_object')
-        rospy.sleep(1.0)
+        # rospy.sleep(1.0)
         # obj_pcd = objects[obj_idx].sample_conservative_pcd()
         # obj_pcd = objects[obj_idx].transform[:3,:3].dot(obj_pcd.T).T + objects[obj_idx].transform[:3,3]
         mesh_vertices, mesh_faces = self.create_mesh_from_voxel(objects[obj_idx].get_conservative_model(), objects[obj_idx])
@@ -311,7 +311,7 @@ class MotionPlanner():
         touch_links = ['motoman_left_ee', 'arm_left_link_tool0', 'motoman_left_hand']
         aco = self.attach_object(co, robot.tip_link_name, touch_links)
         # self.move_group.attach_object('suction_object', robot.tip_link_name)
-        rospy.sleep(1.0)
+        # rospy.sleep(1.0)
 
 
         # plan a trajectory from start joint to target joint

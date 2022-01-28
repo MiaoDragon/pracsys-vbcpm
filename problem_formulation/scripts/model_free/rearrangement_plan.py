@@ -166,16 +166,16 @@ def ik_check_on_pose(obj, obj_pose, robot, workspace, collision_voxel, collision
     # TODO: implement a new grasp_pose_generation code that checks collision with the workspace and a selected
     # set of objects
 
-    voxel_x, voxel_y, voxel_z = np.indices(collision_voxel.shape).astype(int)
-    voxel = visualize_voxel(voxel_x, voxel_y, voxel_z, collision_voxel, [0,1,0])
-    obj_pcd = obj.sample_conservative_pcd()
-    obj_pcd = obj_pose[:3,:3].dot(obj_pcd.T).T + obj_pose[:3,3]
-    transform = np.linalg.inv(collision_transform)
-    obj_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
-    obj_pcd = obj_pcd / voxel_resol
-    obj_pcd = visualize_pcd(obj_pcd, [1,0,0])
-    # print('ik checking on pose...')
-    o3d.visualization.draw_geometries([voxel, obj_pcd])
+    # voxel_x, voxel_y, voxel_z = np.indices(collision_voxel.shape).astype(int)
+    # voxel = visualize_voxel(voxel_x, voxel_y, voxel_z, collision_voxel, [0,1,0])
+    # obj_pcd = obj.sample_conservative_pcd()
+    # obj_pcd = obj_pose[:3,:3].dot(obj_pcd.T).T + obj_pose[:3,3]
+    # transform = np.linalg.inv(collision_transform)
+    # obj_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
+    # obj_pcd = obj_pcd / voxel_resol
+    # obj_pcd = visualize_pcd(obj_pcd, [1,0,0])
+    # # print('ik checking on pose...')
+    # o3d.visualization.draw_geometries([voxel, obj_pcd])
     
 
     pts, poses_in_obj, joints = pose_generation.grasp_pose_generation(None, obj, robot, workspace, None, None, None, sample_n=20)
@@ -215,11 +215,11 @@ def ik_check_on_pose(obj, obj_pose, robot, workspace, collision_voxel, collision
     del pts
     del poses_in_obj
     del joints
-    del obj_pcd
-    del voxel_x
-    del voxel_y
-    del voxel_z
-    del voxel
+    # del obj_pcd
+    # del voxel_x
+    # del voxel_y
+    # del voxel_z
+    # del voxel
 
     return valid_pts, valid_poses_in_obj, valid_joints
 
@@ -229,16 +229,16 @@ def ik_check_on_pose_with_grasp_pose(obj, obj_pose, poses_in_obj, robot, workspa
     # TODO: implement a new grasp_pose_generation code that checks collision with the workspace and a selected
     # set of objects
 
-    voxel_x, voxel_y, voxel_z = np.indices(collision_voxel.shape).astype(int)
-    voxel = visualize_voxel(voxel_x, voxel_y, voxel_z, collision_voxel, [0,1,0])
-    obj_pcd = obj.sample_conservative_pcd()
-    obj_pcd = obj_pose[:3,:3].dot(obj_pcd.T).T + obj_pose[:3,3]
-    transform = np.linalg.inv(collision_transform)
-    obj_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
-    obj_pcd = obj_pcd / voxel_resol
-    obj_pcd = visualize_pcd(obj_pcd, [1,0,0])
-    # print('ik checking on pose...')
-    o3d.visualization.draw_geometries([voxel, obj_pcd])
+    # voxel_x, voxel_y, voxel_z = np.indices(collision_voxel.shape).astype(int)
+    # voxel = visualize_voxel(voxel_x, voxel_y, voxel_z, collision_voxel, [0,1,0])
+    # obj_pcd = obj.sample_conservative_pcd()
+    # obj_pcd = obj_pose[:3,:3].dot(obj_pcd.T).T + obj_pose[:3,3]
+    # transform = np.linalg.inv(collision_transform)
+    # obj_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
+    # obj_pcd = obj_pcd / voxel_resol
+    # obj_pcd = visualize_pcd(obj_pcd, [1,0,0])
+    # # print('ik checking on pose...')
+    # o3d.visualization.draw_geometries([voxel, obj_pcd])
     
 
     # pts, poses_in_obj, joints = pose_generation.grasp_pose_generation(None, obj, robot, workspace, None, None, None)
@@ -275,11 +275,11 @@ def ik_check_on_pose_with_grasp_pose(obj, obj_pose, poses_in_obj, robot, workspa
         valid_joints.append(dof_joint_vals)
 
 
-    del obj_pcd
-    del voxel_x
-    del voxel_y
-    del voxel_z
-    del voxel
+    # del obj_pcd
+    # del voxel_x
+    # del voxel_y
+    # del voxel_z
+    # del voxel
 
     return valid_pts, valid_poses_in_obj, valid_joints
 
@@ -291,7 +291,7 @@ def ik_check_start_target_pose(obj, obj_pose, obj_start_pose, robot, workspace, 
     target_valid_pts, target_valid_poses_in_obj, target_valid_joints = \
         ik_check_on_pose(obj, obj_pose, robot, workspace, collision_voxel, voxel_transform, voxel_resol)
     if len(target_valid_pts) == 0:
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None
     
 
     valid_pts, valid_poses_in_obj, valid_joints = \
@@ -385,7 +385,7 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
                                 collision_voxel, robot_collision_voxel, voxel_resol, 
                                 voxel_transform, robot, workspace, n_iter)
 
-    input('after sampling goal...')
+    # input('after sampling goal...')
 
     # obj_poses: for all objects (obj_pcds and moveable_objs)
 
@@ -438,6 +438,10 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
     num_move_objs = np.sum(obj_included_list)
 
     while len(searched_objs) < num_move_objs:
+        print('searched objs: ')
+        print(searched_objs)
+        print('num_move_objs: ', num_move_objs)
+        valid = False
         for i in range(search_start, len(total_objs)):
             if i in searched_objs_set:
                 continue
@@ -507,13 +511,14 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
         mp_map[transformed_obj_pcd[:,0],transformed_obj_pcd[:,1],transformed_obj_pcd[:,2]] = 1
         
     motion_planner.clear_octomap()
-    rospy.sleep(2.0)
     motion_planner.set_collision_env_with_filter(occlusion, mp_map)
     # TODO: transfer plan should include first going to pre-grasp pose, then going staright-line to grasp the object
-    rospy.sleep(1.0)
 
     relative_tip_pose = np.eye(4)
     relative_tip_pose[:3,3] = np.array([-0.05,0,0.0]) # retreat by 0.05
+
+    print('len(searched_trajs): ', len(searched_trajs))
+    print('len(searched_trajs[-1]): ', len(searched_trajs[-1]))
     start_joint_dict = searched_trajs[-1][-1]
     tip_suction_pose = robot.get_tip_link_pose(start_joint_dict)
     rest_traj_1 = motion_planner.straight_line_motion(searched_trajs[-1][-1], tip_suction_pose, relative_tip_pose, robot, workspace=workspace)   
@@ -635,6 +640,11 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         transformed_pcd = obj_poses_in_voxel[obj_idx][:3,:3].dot(obj_pcds[obj_idx].T).T + obj_poses_in_voxel[obj_idx][:3,3]
         transformed_pcd = transformed_pcd / voxel_resol
         transformed_pcd = np.floor(transformed_pcd).astype(int)
+        valid_filter = (transformed_pcd[:,0] >= 0) & (transformed_pcd[:,0] < mp_map.shape[0]) & \
+                        (transformed_pcd[:,1] >= 0) & (transformed_pcd[:,1] < mp_map.shape[1]) & \
+                        (transformed_pcd[:,2] >= 0) & (transformed_pcd[:,2] < mp_map.shape[2])        
+        transformed_pcd = transformed_pcd[valid_filter]
+
         mp_map[transformed_pcd[:,0],transformed_pcd[:,1], transformed_pcd[:,2]] = 1
 
     for obj_idx in unsearched_objs:
@@ -643,6 +653,11 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         transformed_pcd = obj_start_poses_in_voxel[obj_idx][:3,:3].dot(obj_pcds[obj_idx].T).T + obj_start_poses_in_voxel[obj_idx][:3,3]
         transformed_pcd = transformed_pcd / voxel_resol
         transformed_pcd = np.floor(transformed_pcd).astype(int)
+        valid_filter = (transformed_pcd[:,0] >= 0) & (transformed_pcd[:,0] < mp_map.shape[0]) & \
+                        (transformed_pcd[:,1] >= 0) & (transformed_pcd[:,1] < mp_map.shape[1]) & \
+                        (transformed_pcd[:,2] >= 0) & (transformed_pcd[:,2] < mp_map.shape[2])
+        transformed_pcd = transformed_pcd[valid_filter]
+
         mp_map[transformed_pcd[:,0],transformed_pcd[:,1],transformed_pcd[:,2]] = 1        
 
     # check collision for start and goal. If they're in collision, then automatically return failure
@@ -656,10 +671,10 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
     transformed_pcd = transformed_pcd[valid_filter]
 
 
-    input('start pose check')
-    voxel = visualize_voxel(x_map, y_map, z_map, mp_map, [0,0,1])
-    start_vis_pcd = visualize_pcd(transformed_pcd, [0,1,0])
-    o3d.visualization.draw_geometries([voxel, start_vis_pcd])
+    # input('start pose check')
+    # voxel = visualize_voxel(x_map, y_map, z_map, mp_map, [0,0,1])
+    # start_vis_pcd = visualize_pcd(transformed_pcd, [0,1,0])
+    # o3d.visualization.draw_geometries([voxel, start_vis_pcd])
 
 
 
@@ -677,10 +692,10 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
     transformed_pcd = transformed_pcd[valid_filter]
 
 
-    input('goal pose check')
-    voxel = visualize_voxel(x_map, y_map, z_map, mp_map, [0,0,1])
-    vis_pcd = visualize_pcd(transformed_pcd, [1,0,0])
-    o3d.visualization.draw_geometries([voxel, vis_pcd, start_vis_pcd])
+    # input('goal pose check')
+    # voxel = visualize_voxel(x_map, y_map, z_map, mp_map, [0,0,1])
+    # vis_pcd = visualize_pcd(transformed_pcd, [1,0,0])
+    # o3d.visualization.draw_geometries([voxel, vis_pcd, start_vis_pcd])
 
     if mp_map[transformed_pcd[:,0], transformed_pcd[:,1], transformed_pcd[:,2]].sum() > 0:
         return [], []
@@ -706,6 +721,12 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
     transformed_pcd = obj_start_poses_in_voxel[obj_i][:3,:3].dot(obj_pcds[obj_i].T).T + obj_start_poses_in_voxel[obj_i][:3,3]
     transformed_pcd = transformed_pcd / voxel_resol
     transformed_pcd = np.floor(transformed_pcd).astype(int)
+    
+    valid_filter = (transformed_pcd[:,0] >= 0) & (transformed_pcd[:,0] < transfer_mp_map.shape[0]) & \
+                    (transformed_pcd[:,1] >= 0) & (transformed_pcd[:,1] < transfer_mp_map.shape[1]) & \
+                    (transformed_pcd[:,2] >= 0) & (transformed_pcd[:,2] < transfer_mp_map.shape[2])
+    transformed_pcd = transformed_pcd[valid_filter]
+
     transfer_mp_map[transformed_pcd[:,0],transformed_pcd[:,1],transformed_pcd[:,2]] = 1        
 
 
@@ -714,9 +735,7 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         target_joint_dict = robot.joint_vals_to_dict(target_joint_vals[i])
         suction_pose =  obj_start_pose.dot(tip_poses_in_obj[i])
         motion_planner.clear_octomap()
-        rospy.sleep(2.0)
         motion_planner.set_collision_env_with_filter(occlusion, transfer_mp_map)
-        rospy.sleep(1.0)
         
         transfer_traj = motion_planner.suction_plan(previous_joint_dict, suction_pose, start_joint_vals[i], robot, workspace=workspace, display=False)
         # transfer_traj = motion_planner.joint_dict_motion_plan(previous_joint_dict, start_joint_dict, robot)
@@ -724,9 +743,7 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
             print('transfer trajectory is empty...')
             continue
         motion_planner.clear_octomap()
-        rospy.sleep(2.0)
         motion_planner.set_collision_env_with_filter(occlusion, mp_map)
-        rospy.sleep(1.0)
 
         # lift up to avoid collision with bottom
         relative_tip_pose = np.eye(4)
@@ -753,7 +770,7 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         drop_traj = drop_traj[::-1]
         joint_vals = robot.joint_dict_to_vals(drop_traj[0])
         traj = motion_planner.suction_with_obj_plan(lift_traj[-1], tip_poses_in_obj[i], joint_vals, robot, 0, [obj])
-        input('after planning... planning is success? %d' % (len(traj)>0))
+        # input('after planning... planning is success? %d' % (len(traj)>0))
         if len(transfer_traj) > 0 and len(lift_traj) > 0 and len(traj) > 0 and len(drop_traj) > 0:
             break
     # motion planning from start joint to target joint. Set the collision using the collision_voxel
@@ -763,15 +780,17 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
     del y_map
     del z_map
     del transformed_pcd
-    del voxel
-    del vis_pcd
+    # del voxel
+    # del vis_pcd
     del valid_filter
     del start_transformed_pcd
     del goal_transformed_pcd
     del transfer_mp_map
 
-
-    return transfer_traj, lift_traj+traj+drop_traj
+    if len(transfer_traj) > 0 and len(lift_traj) > 0 and len(traj) > 0 and len(drop_traj) > 0:
+        return transfer_traj, lift_traj+traj+drop_traj
+    else:
+        return [], []
 
 
 
@@ -801,7 +820,7 @@ def find_trajectory(obj_i, obj, obj_start_pose, obj_start_state, obj_pose, obj_s
     plt.pcolor(x_map * grid_resol[0], y_map * grid_resol[1], mp_map)        
 
     plt.scatter(objs[0][:,0], objs[0][:,1])
-    input('object 0')
+    # input('object 0')
 
     plt.clf()
 
@@ -809,12 +828,12 @@ def find_trajectory(obj_i, obj, obj_start_pose, obj_start_state, obj_pose, obj_s
     for obj_idx in searched_objs:
         print('searched object idx: ', obj_idx)
         plt.scatter(objs[obj_idx][:,0], objs[obj_idx][:,1])
-        input('object see')
+        # input('object see')
         plt.clf()
         transformed_pcd = obj_poses[obj_idx][:2,:2].dot(objs[obj_idx].T).T + obj_poses[obj_idx][:2,2]
         transformed_pcd = transformed_pcd / grid_resol
         plt.scatter(objs[obj_idx][:,0], objs[obj_idx][:,1])
-        input('object see')
+        # input('object see')
         plt.clf()
 
         transformed_pcd = np.floor(transformed_pcd).astype(int)
@@ -1069,7 +1088,7 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
 
     plt.clf()
     plt.pcolor(map_x*grid_resol[0], map_y*grid_resol[1], robot_collision_grid)
-
+    plt.pause(0.0001)
 
     obj_pcd_2ds = obj_pcd_2d_projection(obj_pcds)
     moveable_obj_pcd_2ds = obj_pcd_2d_projection(moveable_obj_pcds)
@@ -1134,6 +1153,12 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
 
             for i in range(len(total_objs)):
                 for j in range(i+1, len(total_objs)):
+                    # * if i and j are both moveable but unsampled objects, then check collision
+                    # only when iteration has passed
+                    if not ((i_iter >= int(0.5*n_iter)) and (trial_i >= int(0.8 * trial_n))):
+                        if (obj_included_list[i] !=1) and (obj_included_list[j] != 1):
+                            continue
+
                     if obj_collision(total_obj_pcd_2ds[i], total_obj_poses[i], total_obj_pcd_2ds[j], total_obj_poses[j], robot_collision_grid, grid_resol):
                         # if many iterations have passed and still in collision, then add that to included_list
                         if (i_iter >= int(0.5*n_iter)) and (trial_i >= int(0.8 * trial_n)):
@@ -1168,9 +1193,9 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
             for i in range(len(total_objs)):
                 pcd = total_obj_2d_start_poses[i][:2,:2].dot(total_obj_pcd_2ds[i].T).T + total_obj_2d_start_poses[i][:2,2]
                 plt.scatter(pcd[:,0], pcd[:,1], c='g')
-
                 pcd = total_obj_poses[i][:2,:2].dot(total_obj_pcd_2ds[i].T).T + total_obj_poses[i][:2,2]
                 plt.scatter(pcd[:,0], pcd[:,1], c='r')
+            plt.pause(0.0001)
             # input('next...')
 
             # validate obj poses  
@@ -1201,6 +1226,7 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                         mp_map[pcd[:,0], pcd[:,1], pcd[:,2]] = 1  # include objects that are not moved into collision
 
                 # make sure it's not too tight
+
                 for i in range(len(total_objs)):
                     if obj_included_list[i]:
                         pcd = total_start_poses_in_voxel[i][:3,:3].dot(total_obj_pcds[i].T).T + \
@@ -1213,8 +1239,12 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                         pcd = pcd[valid_filter]
                         mp_map = mask_pcd_xy_with_padding(mp_map, pcd, padding=1)
 
-                        pcd = total_obj_poses[i][:3,:3].dot(total_obj_pcds[i].T).T + \
-                                total_obj_poses[i][:3,3]
+                        # total_obj_poses is 2D pose in the voxel
+                        # obtain the pose in voxel from the 2D pose
+                        obj_pose_in_voxel = pose_from_2d_pose(total_obj_poses[i], total_zs[i])
+
+                        pcd = obj_pose_in_voxel[:3,:3].dot(total_obj_pcds[i].T).T + \
+                                obj_pose_in_voxel[:3,3]
                         pcd = pcd / voxel_resol
                         pcd = np.floor(pcd).astype(int)
                         valid_filter = (pcd[:,0] >= 0) & (pcd[:,0] < mp_map.shape[0]) & \
@@ -1236,7 +1266,7 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
 
 
                         continue
-                    input('ik check on target pose...')
+                    # input('ik check on target pose...')
                     target_valid_pts, target_valid_poses_in_obj, target_valid_joints = \
                         ik_check_on_2d_pose(total_objs[i], total_obj_poses[i], total_zs[i], total_zs_in_world[i], 
                                             robot, workspace, mp_map, voxel_transform, voxel_resol)
@@ -1245,13 +1275,12 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                         break
                     
 
-                    input('ik check on start pose...')
+                    # input('ik check on start pose...')
                     valid_pts, valid_poses_in_obj, valid_joints = \
                         ik_check_on_pose_with_grasp_pose(total_objs[i], total_start_obj_poses[i], 
                                                         target_valid_poses_in_obj, 
                                                         robot, workspace,
                                                         mp_map, voxel_transform, voxel_resol)
-                    del mp_map
 
                     # cross check
                     filtered_target_valid_pts = []
@@ -1288,7 +1317,9 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                     total_valid_poses_in_obj.append(target_valid_poses_in_obj)
                     total_valid_joints.append(target_valid_joints)
 
-
+                
+                
+                del mp_map
                 # TODO: now we concatenate obj_poses and moveable_obj_poses. In the future distinguish them
                 # for i in range(len(moveable_objs)):
                 #     valid_pts, valid_poses_in_obj, valid_joints = \
@@ -1310,8 +1341,6 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                 del total_obj_pcd_2ds
                 del total_objs
                 del pcd
-
-
 
                 return obj_included_list, total_obj_poses, total_start_valid_pts, total_start_valid_poses_in_obj, \
                     total_start_valid_joints, total_valid_pts, total_valid_poses_in_obj, total_valid_joints
@@ -1454,7 +1483,7 @@ def obj_obj_force(obj_i, pose_i, obj_j, pose_j):
     r2 = np.max(r2)
 
     dis = (r1 + r2 - distance) / 2
-    force_factor = 0.01
+    force_factor = 0.02
     force = dis * direction * force_factor
     return force
 

@@ -88,6 +88,7 @@ import pybullet as p
 import transformations as tf
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+import time
 
 def transform_pybullet_obj(obj_id, obj_pybullet_pose, pid):
     quat = tf.quaternion_from_matrix(obj_pybullet_pose) # w x y z
@@ -95,6 +96,7 @@ def transform_pybullet_obj(obj_id, obj_pybullet_pose, pid):
 
 
 def construct_occlusion_graph(obj_ids, obj_pybullet_poses, camera, pid):
+    plt.ion()
     dot = pgv.AGraph(directed=True)
     # move each object to faraway and capture depth image, seg image, then move back
     translation_z = 10.0
@@ -188,9 +190,11 @@ def construct_occlusion_graph(obj_ids, obj_pybullet_poses, camera, pid):
     plt.clf()
     plt.imshow(img)
     plt.show()
-
+    plt.pause(0.0001)
 
 def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj_ids, move_obj_id, camera, pid):
+    plt.ion()
+
     dot = pgv.AGraph(directed=True)
     # move each object to faraway and capture depth image, seg image, then move back
     translation_z = 10.0
@@ -297,7 +301,6 @@ def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj
     plt.clf()
     plt.imshow(img)
     plt.show()
-    pass
-        
+    plt.pause(0.1)
 
 

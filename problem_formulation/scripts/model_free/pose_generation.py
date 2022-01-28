@@ -78,6 +78,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
 
     transformed_suction_x = np.cross(transformed_suction_y, transformed_suction_normal)
 
+
     # TODO: visualize the suction pose
     arrows = []
     for i in range(len(other_suction_normal)):
@@ -104,6 +105,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     frames = []
 
     # select 10 suction pts
+    sample_n = min(len(transformed_suction_pts), sample_n)
     selected_suction_pts = np.random.choice(len(transformed_suction_pts), sample_n, replace=False)
     transformed_suction_pts = transformed_suction_pts[selected_suction_pts]
     transformed_suction_normal = transformed_suction_normal[selected_suction_pts]

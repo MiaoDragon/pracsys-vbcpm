@@ -73,7 +73,7 @@ def main():
     problem_def['motion_planner'] = motion_planner
     
     construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
-    input('after constrcuting occlusion graph')
+    # input('after constrcuting occlusion graph')
 
     robot.set_motion_planner(motion_planner)
 
