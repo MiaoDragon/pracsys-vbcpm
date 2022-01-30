@@ -80,22 +80,22 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
 
 
     # TODO: visualize the suction pose
-    arrows = []
-    for i in range(len(other_suction_normal)):
-        arrow = visualize_arrow(scale=0.1, translation=other_suction_pts[i]/obj.resol, 
-                                direction=-other_suction_normal[i], color=[1,0,0])
-        arrows.append(arrow)
+    # arrows = []
+    # for i in range(len(other_suction_normal)):
+    #     arrow = visualize_arrow(scale=0.1, translation=other_suction_pts[i]/obj.resol, 
+    #                             direction=-other_suction_normal[i], color=[1,0,0])
+    #     arrows.append(arrow)
 
-    for i in range(len(filtered_suction_normal)):
-        arrow = visualize_arrow(scale=0.1, translation=filtered_suction_pts[i]/obj.resol, 
-                                direction=-filtered_suction_normal[i], color=[0,1,0])
-        arrows.append(arrow)
-    # pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
-    voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, obj.get_optimistic_model(), [0,0,1])
-    o3d.visualization.draw_geometries(arrows + [voxel])
+    # for i in range(len(filtered_suction_normal)):
+    #     arrow = visualize_arrow(scale=0.1, translation=filtered_suction_pts[i]/obj.resol, 
+    #                             direction=-filtered_suction_normal[i], color=[0,1,0])
+    #     arrows.append(arrow)
+    # # pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
+    # voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, obj.get_optimistic_model(), [0,0,1])
+    # o3d.visualization.draw_geometries(arrows + [voxel])
 
-    del arrows
-    del voxel
+    # del arrows
+    # del voxel
 
     valid_pts = []
     valid_orientations = []

@@ -44,6 +44,7 @@ class PerceptionPipeline():
         valid_objects = self.obtain_unhidden_objects(robot_ids, workspace_ids)
 
         object_hide_set = self.obtain_object_hide_set(robot_ids, workspace_ids)
+        self.current_hide_set = object_hide_set
             
         self.slam_system.perceive(depth_img, color_img, seg_img, 
                                     assoc, self.data_assoc.obj_ids_reverse, object_hide_set, 

@@ -47,8 +47,8 @@ class Robot():
             joint_vals.append(state[0])
             joint_dict[name] = state[0]
 
-        print('joint names: ')
-        print(joint_names)
+        # print('joint names: ')
+        # print(joint_names)
         self.robot_id = robot_id
         self.num_joints = num_joints
         self.joint_names = joint_names
@@ -312,7 +312,7 @@ class Robot():
             # print('joint values not within range')
             valid = False
         if not valid:
-            print('IK failed')
+            # print('IK failed')
             return valid, dof_joint_vals
         # check collision
         if collision_check:
@@ -320,7 +320,7 @@ class Robot():
             robot_state = self.motion_planner.get_robot_state_from_joint_dict(joint_dict)
             result = self.motion_planner.get_state_validity(robot_state, group_name="robot_arm")
             if not result.valid:
-                print('state_validity failed')
+                # print('state_validity failed')
                 valid = False
                 # show the result
                 self.set_joints_without_memorize(joint_dict)

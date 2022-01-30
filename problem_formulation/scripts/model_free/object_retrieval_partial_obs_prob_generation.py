@@ -121,8 +121,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs, safety_padding=0
                 z_scales = np.arange(0.8, 1.2, 0.1)/10
                 # put it slightly inside
             else:
-                x_scales = np.arange(0.5, 1.2, 0.1)/10
-                y_scales = np.arange(0.5, 1.2, 0.1)/10
+                x_scales = np.arange(0.5, 1.1, 0.1)/10
+                y_scales = np.arange(0.5, 1.1, 0.1)/10
                 z_scales = np.arange(1.2, 1.5, 0.1)/10
                 x_low_offset = 0
             if i == 0:

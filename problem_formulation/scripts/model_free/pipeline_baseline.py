@@ -1046,7 +1046,10 @@ class PipelineBaseline():
         blocking_mask = blocking_mask[::-1,:,:] > 0
 
         # * add visibility blocking constraint to the mask
-        blocking_mask = blocking_mask | self.obtain_visibility_blocking_mask(target_obj)
+        # NOTE: we only need this if the target object is actually hidden by others
+        # if the target object is not in the key, then it means it should be hidden
+        if target_obj_i in self.perception.current_hide_set and len(self.perception.current_hide_set[target_obj_i]) > 0:
+            blocking_mask = blocking_mask | self.obtain_visibility_blocking_mask(target_obj)
 
 
 
@@ -1062,7 +1065,7 @@ class PipelineBaseline():
         # remove interior of target_pcd
         blocking_mask = self.mask_pcd_xy_with_padding(blocking_mask, target_pcd, padding=1)
 
-        # # # visualize the blocking mask
+        # # # # visualize the blocking mask
         # vis_voxels = []
         # for obj_i, obj in self.perception.slam_system.objects.items():
         #     occupied_i = self.prev_occupied_dict[obj_i]
@@ -1355,7 +1358,7 @@ class PipelineBaseline():
             # valid_objects = list(valid_objects)
 
             # move_obj_idx = np.random.choice(valid_objects)
-            move_obj_idx = valid_objects[3]
+            move_obj_idx = valid_objects[0]
 
             # if iter_i < len(orders):
             #     move_obj_idx = orders[iter_i]
