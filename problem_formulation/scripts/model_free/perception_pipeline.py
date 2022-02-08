@@ -44,8 +44,17 @@ class PerceptionPipeline():
         valid_objects = self.obtain_unhidden_objects(robot_ids, workspace_ids)
 
         object_hide_set = self.obtain_object_hide_set(robot_ids, workspace_ids)
+        self.current_hide_set = object_hide_set
             
-        self.slam_system.perceive(depth_img, color_img, seg_img, assoc, object_hide_set, camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], robot_ids, workspace_ids)
+        self.slam_system.perceive(depth_img, color_img, seg_img, 
+                                    assoc, self.data_assoc.obj_ids_reverse, object_hide_set, 
+                                    camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], 
+                                    robot_ids, workspace_ids)
+
+        # update each object's hide set
+        for obj_i, obj_hide_list in object_hide_set.items():
+            self.slam_system.objects[obj_i].update_obj_hide_set(obj_hide_list)
+
 
         for obj_id in valid_objects:
             self.slam_system.objects[obj_id].set_active()
@@ -75,6 +84,8 @@ class PerceptionPipeline():
         for wid in workspace_ids:
             obj_seg_filter[seg_img==wid] = 0
         obj_seg_filter[seg_img==-1] = 0
+        for rid in robot_ids:
+            obj_seg_filter[seg_img==rid] = 0
         # for seg_id, obj_id in assoc.items():
         #     obj_seg_filter[seg_img==seg_id] = 1
 
@@ -151,7 +162,11 @@ class PerceptionPipeline():
             hiding_set = hiding_set.union(set(hiding_seg_obj_filtered.tolist()))
 
 
-            hiding_objs[obj_id] = list(hiding_set)
+            # NOTE: hiding_set stores seg_ids, which are pybullet ids instead of obj_id
+            # we need to convert them
+            hiding_set = list(hiding_set)
+            hiding_set = [assoc[sid] for sid in hiding_set]
+            hiding_objs[obj_id] = hiding_set
         
         # seen_objs = set(seen_objs)
         # total_obj_ids = set(list(self.slam_system.objects.keys()))
@@ -250,7 +265,7 @@ class PerceptionPipeline():
                 # if (not obj_id in self.slam_system.objects) or (not self.slam_system.objects[obj_id].active):
                 #     continue
             
-            print('object %d is valid' % (obj_id))
+            # print('object %d is valid' % (obj_id))
             valid_objects.append(obj_id)
 
 

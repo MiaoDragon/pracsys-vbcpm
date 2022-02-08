@@ -5,8 +5,8 @@ import time
 class Camera():
     def __init__(self):
         # TODO: parameterize the camera position
-        cam_pos = np.array([0.35, 0., 1.25])
-        look_at = np.array([1.35, 0., 0.58])
+        cam_pos = np.array([0.35, 0., 1.3])
+        look_at = np.array([1.4, 0., 0.7])
         up_vec = np.array([cam_pos[2]-look_at[2], 0., look_at[0]-cam_pos[0]])
         # up_vec = np.array([1.25-0.58, 0., 1.35-0.35])
 
@@ -62,6 +62,7 @@ class Camera():
         self.info['extrinsics'] = cam_extrinsics
         self.info['factor'] = 1.0  # To be parameterized
         self.info['img_size'] = img_size
+        self.info['img_shape'] = [img_size, img_size]
         self.info['far'] = far
         self.info['near'] = near
         self.info['pos'] = cam_pos

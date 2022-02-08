@@ -16,18 +16,46 @@ from perception_pipeline import PerceptionPipeline
 import transformations as tf
 
 from visual_utilities import *
-from object_retrieval_partial_obs_prob_generation import random_one_problem
+from object_retrieval_partial_obs_prob_generation import load_problem, random_one_problem
 from pipeline_baseline import PipelineBaseline
 from prob_planner import ProbPlanner
 from motion_planner import MotionPlanner
 
+import sys
+import pickle
 
-if __name__ == "__main__":
 
-    
 
-    pid, scene_dict, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = \
-            random_one_problem(scene='scene1.json', level=1, num_objs=7, num_hiding_objs=1)
+def main():
+    if int(sys.argv[1]) > 0:
+        print('argv: ', sys.argv)
+        # load previously generated object
+        f = open('saved_problem.pkl', 'rb')
+        data = pickle.load(f)
+        f.close()
+        scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size = data
+        data = load_problem(scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, 
+                            target_pose, target_pcd, target_obj_shape, target_obj_size)
+        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = data
+        f = open(scene_f, 'r')
+        scene_dict = json.load(f)        
+        
+        print('loaded')
+    else:
+        scene_f = 'scene1.json'
+        data = random_one_problem(scene=scene_f, level=1, num_objs=7, num_hiding_objs=1)
+        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_shapes, obj_sizes, \
+            target_pose, target_pcd, target_obj_id, target_obj_shape, target_obj_size = data
+        data = (scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size)
+        save = input('save current scene? 0 - no, 1 - yes...')
+        f = open(scene_f, 'r')
+        scene_dict = json.load(f)
+        f.close()
+        if int(save) == 1:
+            f = open('saved_problem.pkl', 'wb')
+            pickle.dump(data, f)
+            f.close()
+            print('saved')
 
     problem_def = {}
     problem_def['pid'] = pid
@@ -44,8 +72,15 @@ if __name__ == "__main__":
     motion_planner = MotionPlanner(robot, workspace)
     problem_def['motion_planner'] = motion_planner
     
+    construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
+    # input('after constrcuting occlusion graph')
+
     robot.set_motion_planner(motion_planner)
 
     pipeline = PipelineBaseline(problem_def)
 
-    pipeline.solve(ProbPlanner())
+    # pipeline.solve(ProbPlanner())
+    pipeline.run_pipeline(10)    
+
+if __name__ == "__main__":
+    main()

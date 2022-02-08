@@ -30,7 +30,7 @@ from perception_pipeline import PerceptionPipeline
 import transformations as tf
 
 from visual_utilities import *
-def random_one_problem(scene, level, num_objs, num_hiding_objs):
+def random_one_problem(scene, level, num_objs, num_hiding_objs, safety_padding=0.01):
     """
     generate one random instance of the problem
     last one object is the target object
@@ -61,7 +61,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         [0.8, 0.8757, 0.8757, 0.81, 0.8757, 0.8757]
 
     robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], 
-                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid)
+                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid, [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0])
 
 
     joints = [0,
@@ -108,19 +108,22 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         obj_ids = []
         obj_poses = []
         obj_pcds = []
+        obj_shapes = []
+        obj_sizes = []
         for i in range(num_objs):
             # randomly pick one object shape
             obj_shape = random.choice(obj_list)
+            obj_shapes.append(obj_shape)
             # randomly scale the object
             if i == 0:
-                x_scales = np.arange(0.4, 0.7, 0.1)/10
-                y_scales = np.arange(0.4, 0.7, 0.1)/10
-                z_scales = np.arange(0.5, 0.9, 0.1)/10
+                x_scales = np.arange(0.4, 0.9, 0.1)/10
+                y_scales = np.arange(0.4, 0.9, 0.1)/10
+                z_scales = np.arange(0.8, 1.2, 0.1)/10
                 # put it slightly inside
             else:
-                x_scales = np.arange(0.5, 1.2, 0.1)/10
-                y_scales = np.arange(0.5, 1.2, 0.1)/10
-                z_scales = np.arange(0.5, 1.5, 0.1)/10
+                x_scales = np.arange(0.5, 1.1, 0.1)/10
+                y_scales = np.arange(0.5, 1.1, 0.1)/10
+                z_scales = np.arange(1.2, 1.5, 0.1)/10
                 x_low_offset = 0
             if i == 0:
                 color = [1.0,0.,0.,1]
@@ -156,7 +159,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                             collision = True
                             break
                     for obj_id in obj_ids:
-                        contacts = p.getClosestPoints(bid, obj_id, distance=0.,physicsClientId=pid)
+                        # add some distance between objects
+                        contacts = p.getClosestPoints(bid, obj_id, distance=safety_padding,physicsClientId=pid)
                         if len(contacts):
                             collision = True
                             break                    
@@ -190,6 +194,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     pose[:3,3] = np.array([x, y, z])
                     obj_poses.append(pose)
                     obj_pcds.append(pcd)
+                    obj_sizes.append([x_size, y_size, z_size])
+
                     break
             else:
                 while True:
@@ -202,7 +208,6 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         x_low_offset = (workspace_high[0]-workspace_low[0]-x_size)/2
                     else:
                         x_low_offset = 0
-
                     pcd = pcd_cylinder * np.array([x_size, y_size, z_size])
                     # sample a pose in the workspace
                     x = np.random.uniform(low=workspace_low[0]+x_size/2+x_low_offset, high=workspace_high[0]-x_size/2)
@@ -220,7 +225,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                             collision = True
                             break
                     for obj_id in obj_ids:
-                        contacts = p.getClosestPoints(bid, obj_id, distance=0.,physicsClientId=pid)
+                        contacts = p.getClosestPoints(bid, obj_id, distance=safety_padding,physicsClientId=pid)
                         if len(contacts):
                             collision = True
                             break                    
@@ -254,6 +259,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     pose[:3,3] = np.array([x, y, z])
                     obj_poses.append(pose)
                     obj_pcds.append(pcd)
+                    obj_sizes.append([x_size, y_size, z_size])
 
                     break
 
@@ -279,12 +285,94 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     depth_img[depth_img>=far] = 0.
     depth_img[depth_img<=near]=0.
 
-    return pid, scene_dict, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_poses[0], obj_pcds[0], obj_ids[0]
+    return pid, scene, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_shapes, obj_sizes, \
+        obj_poses[0], obj_pcds[0], obj_ids[0], obj_shapes[0], obj_sizes[0]
+
+
+def load_problem(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
+                target_pose, target_pcd, target_obj_shape, target_obj_size):
+
+    # load scene definition file
+    pid = p.connect(p.GUI)
+    f = open(scene, 'r')
+    scene_dict = json.load(f)
+
+    rp = rospkg.RosPack()
+    package_path = rp.get_path('vbcpm_execution_system')
+    urdf_path = os.path.join(package_path,scene_dict['robot']['urdf'])
+    joints = [0.] * 16
+
+    ll = [-1.58, \
+        -3.13, -1.90, -2.95, -2.36, -3.13, -1.90, -3.13, \
+        -3.13, -1.90, -2.95, -2.36, -3.13, -1.90, -3.13] +  \
+        [0.0, -0.8757, 0.0, 0.0, -0.8757, 0.0]
+    ### upper limits for null space
+    ul = [1.58, \
+        3.13, 1.90, 2.95, 2.36, 3.13, 1.90, 3.13, \
+        3.13, 1.90, 2.95, 2.36, 3.13, 1.90, 3.13] + \
+        [0.8, 0.0, 0.8757, 0.81, 0.0, 0.8757]
+    ### joint ranges for null space
+    jr = [1.58*2, \
+        6.26, 3.80, 5.90, 4.72, 6.26, 3.80, 6.26, \
+        6.26, 3.80, 5.90, 4.72, 6.26, 3.80, 6.26] + \
+        [0.8, 0.8757, 0.8757, 0.81, 0.8757, 0.8757]
+
+    robot = Robot(urdf_path, scene_dict['robot']['pose']['pos'], scene_dict['robot']['pose']['ori'], 
+                    ll, ul, jr, 'motoman_left_ee', 0.3015, pid, [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0])
+
+
+    joints = [0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0 ,0.0,  # left (suction)
+            1.75, 0.8, 0.0, -0.66, 0.0, 0.0 ,0.0,  # right
+            ]
+    robot.set_joints(joints)  # 
+
+    workspace_low = scene_dict['workspace']['region_low']
+    workspace_high = scene_dict['workspace']['region_high']
+    padding = scene_dict['workspace']['padding']
+    workspace = Workspace(scene_dict['workspace']['pos'], scene_dict['workspace']['ori'], \
+                            scene_dict['workspace']['components'], workspace_low, workspace_high, padding, \
+                            pid)
+    workspace_low = workspace.region_low
+    workspace_high = workspace.region_high
+    # camera
+    camera = Camera()
+    obj_ids = []
+
+    for i in range(len(obj_shapes)):
+        # randomly pick one object shape
+        obj_shape = obj_shapes[i]
+        # randomly scale the object
+        if i == 0:
+            color = [1.0,0.,0.,1]
+        else:
+            color = [1,1,1,1]
+        x_size, y_size, z_size = obj_sizes[i]
+        x, y, z = obj_poses[i][:3,3]
+        if obj_shape == 'cube':
+            # sample a pose in the workspace
+            cid = p.createCollisionShape(shapeType=p.GEOM_BOX, halfExtents=[x_size/2,y_size/2,z_size/2])
+            vid = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=[x_size/2,y_size/2,z_size/2], rgbaColor=color)
+            bid = p.createMultiBody(baseCollisionShapeIndex=cid, baseVisualShapeIndex=vid, basePosition=[x,y,z], baseOrientation=[0,0,0,1])
+        else:
+            cid = p.createCollisionShape(shapeType=p.GEOM_CYLINDER, height=z_size, radius=x_size/2)
+            vid = p.createVisualShape(shapeType=p.GEOM_CYLINDER,  length=z_size, radius=x_size/2, rgbaColor=color)
+            bid = p.createMultiBody(baseCollisionShapeIndex=cid, baseVisualShapeIndex=vid, basePosition=[x,y,z], baseOrientation=[0,0,0,1])
+        obj_ids.append(bid)
+
+    return pid, scene, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_poses[0], obj_pcds[0], obj_ids[0]
+
+
+
 
 
 def test():
-    pid, scene_dict, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = \
+    pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_shapes, obj_sizes, \
+        target_pose, target_pcd, target_obj_id, target_obj_shape, target_obj_size = \
             random_one_problem(scene='scene1.json', level=1, num_objs=7, num_hiding_objs=1)
+    
+    f = open(scene_f, 'r')
+    scene_dict = json.load(f)
 
 
     width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
