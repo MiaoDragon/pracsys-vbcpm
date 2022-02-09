@@ -20,6 +20,7 @@ import random
 import numpy as np
 from numpy.core.fromnumeric import size
 
+import rospy
 import rospkg
 import pybullet as p
 import open3d as o3d
@@ -32,6 +33,10 @@ from dep_graph import DepGraph
 from workspace import Workspace
 from occlusion_scene import OcclusionScene
 
+from planit import Planner
+from planit.msg import PercievedObject
+from PybulletScenePublisher import PybulletScenePublisher
+
 
 def random_one_problem(scene, level, num_objs, num_hiding_objs):
     """
@@ -39,7 +44,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     last one object is the target object
     """
     # load scene definition file
-    pid = p.connect(p.GUI)
+    pid = p.connect(p.GUI_SERVER)
     f = open(scene, 'r')
     scene_dict = json.load(f)
 
@@ -345,15 +350,18 @@ robot.set_gripper('left', 'open')
 robot.set_gripper('right', 'open')
 # p.setGravity(0, 0, 0)
 # p.setRealTimeSimulation(1)
+# pybullet_scene_pub = PybulletScenePublisher(pid)
+# pybullet_scene_pub.publish()
 
-pose_ind = input("Press Enter Pose Index: ")
+### Grasp Sampling Test ###
+pose_ind = input("Please Enter Pose Index: ")
 # for i, pose in enumerate(true_obj_poses):
 #     obj_i = i + 1
 while pose_ind != 'q':
     try:
         obj_i = int(pose_ind[0])
     except IndexError:
-        pose_ind = input("Press Enter Pose Index: ")
+        pose_ind = input("Please Enter Pose Index: ")
         continue
     i = obj_i - 1
     t0 = time.time()
@@ -372,7 +380,40 @@ while pose_ind != 'q':
         # p.setRealTimeSimulation(0)
         robot.set_joints(pose)
         print(i + 1, [obj_ids.index(x) + 1 for x in cols])
-    pose_ind = input("Press Enter Pose Index: ")
+    pose_ind = input("Please Enter Pose Index: ")
+### Grasp Sampling Test End ###
+
+### Pick Test ###
+rospy.init_node("planit", anonymous=False)
+gw = robot.right_flim[1] * 2  # gripper width
+planner = Planner(gw)
+perception_sub = rospy.Subscriber(
+    '/perception', PercievedObject, planner.scene.updatePerception
+)
+time.sleep(2)
+
+pose_ind = input("Please Enter Pose Index: ")
+while pose_ind != 'q':
+    try:
+        obj_i = int(pose_ind[0]) + 1
+    except IndexError:
+        pose_ind = input("Please Enter Pose Index: ")
+        continue
+
+    chirality = 'left'
+
+    object_name = f'Obj_{obj_i}'
+
+    ### pick up red cylinder ###
+    planner.pick(
+        object_name,
+        v_scale=0.25,
+        a_scale=1.0,
+        grasping_group=chirality + "_hand",
+        group_name=chirality + "_arm",
+    )
+    pose_ind = input("Please Enter Pose Index: ")
+### Pick End ###
 
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
 

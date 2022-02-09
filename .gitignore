@@ -2,3 +2,15 @@
 **/models/**
 **/**.pyc
 **/**.pdf
+baxter
+baxter_moveit
+baxter_common
+baxter_tools
+baxter_examples
+baxter_interface
+baxter_simulator
+moveit_resources
+pysdf
+planit
+baxter_planit
+baxter_moveit
