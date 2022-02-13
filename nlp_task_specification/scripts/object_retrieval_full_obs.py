@@ -33,9 +33,9 @@ from dep_graph import DepGraph
 from workspace import Workspace
 from occlusion_scene import OcclusionScene
 
-from planit import Planner
+from baxter_planner import BaxterPlanner as Planner
 from planit.msg import PercievedObject
-from PybulletScenePublisher import PybulletScenePublisher
+from pybullet_scene_publisher import PybulletScenePublisher
 
 
 def random_one_problem(scene, level, num_objs, num_hiding_objs):
@@ -206,6 +206,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         rgbaColor=color
                     )
                 bid = p.createMultiBody(
+                    baseMass=1.0,
                     baseCollisionShapeIndex=cid,
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
@@ -346,14 +347,18 @@ if not real:
             obj_poses[obj_i - 1] = None
     print(hidden_objs)
 
-robot.set_gripper('left', 'open')
-robot.set_gripper('right', 'open')
+for obj in obj_ids:
+    print("Dynamics:", p.getDynamicsInfo(obj, -1))
+
+robot.set_gripper('left', 'open', reset=True)
+robot.set_gripper('right', 'open', reset=True)
 # p.setGravity(0, 0, 0)
 # p.setRealTimeSimulation(1)
 # pybullet_scene_pub = PybulletScenePublisher(pid)
 # pybullet_scene_pub.publish()
 
 ### Grasp Sampling Test ###
+rest_joints = robot.get_joints()
 pose_ind = input("Please Enter Pose Index: ")
 # for i, pose in enumerate(true_obj_poses):
 #     obj_i = i + 1
@@ -371,22 +376,20 @@ while pose_ind != 'q':
     t1 = time.time()
 
     print("Time: ", t1 - t0)
-    for pose, cols in filteredPoses:
+    for pose, cols, sparse_pose in filteredPoses:
         input("Next?")
-        # robot.setMotors(jointPoses)
-        # print(pose)
-        # robot.setMotors(pose)
-        # p.stepSimulation()
-        # p.setRealTimeSimulation(0)
+        # for iters in range(1000):
+        #     robot.setMotors(sparse_pose)
+        #     p.stepSimulation()
         robot.set_joints(pose)
         print(i + 1, [obj_ids.index(x) + 1 for x in cols])
+    robot.set_joints(rest_joints)
     pose_ind = input("Please Enter Pose Index: ")
 ### Grasp Sampling Test End ###
 
 ### Pick Test ###
 rospy.init_node("planit", anonymous=False)
-gw = robot.right_flim[1] * 2  # gripper width
-planner = Planner(gw)
+planner = Planner(robot, is_sim=True)
 perception_sub = rospy.Subscriber(
     '/perception', PercievedObject, planner.scene.updatePerception
 )
@@ -400,18 +403,23 @@ while pose_ind != 'q':
         pose_ind = input("Please Enter Pose Index: ")
         continue
 
-    chirality = 'left'
-
     object_name = f'Obj_{obj_i}'
+    for chirality in ('left', 'right'):
+        ### pick up red cylinder ###
+        res = planner.pick(
+            object_name,
+            v_scale=0.75,
+            a_scale=1.0,
+            grasping_group=chirality + "_hand",
+            group_name=chirality + "_arm",
+        )
+        print(res, type(res))
+        if res is True:
+            break
+        planner.detach(object_name)
+        robot.set_gripper(chirality, state='open', reset=False)
+        #TODO back to rest pose
 
-    ### pick up red cylinder ###
-    planner.pick(
-        object_name,
-        v_scale=0.25,
-        a_scale=1.0,
-        grasping_group=chirality + "_hand",
-        group_name=chirality + "_arm",
-    )
     pose_ind = input("Please Enter Pose Index: ")
 ### Pick End ###
 

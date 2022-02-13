@@ -20,7 +20,7 @@ class Robot():
         # joint_dict = {}
         joint_names = []
         joint_indices = []
-        joint_name_ind_dict = {}
+        joint_name2ind = {}
         for i in range(num_joints):
             info = p.getJointInfo(robot_id, i, physicsClientId=pybullet_id)
             name = info[1].decode("utf-8")
@@ -30,11 +30,12 @@ class Robot():
             # joint_dict[name] =
             joint_names.append(name)
             joint_indices.append(i)
-            joint_name_ind_dict[name] = i
+            joint_name2ind[name] = i
 
         self.robot_id = robot_id
         self.num_joints = num_joints
         self.joint_names = joint_names
+        self.joint_name2ind = joint_name2ind
         self.pybullet_id = pybullet_id
 
         self.right_gripper_id = 26
@@ -47,6 +48,7 @@ class Robot():
         self.lowerLimits, self.upperLimits, self.jointRanges, self.restPoses = self.getJointRanges(
             includeFixed=False
         )
+        print(self.joint_names)
 
     def set_joints(self, joints):
         for i in range(self.num_joints):
@@ -54,38 +56,61 @@ class Robot():
                 self.robot_id, i, joints[i], 0, physicsClientId=self.pybullet_id
             )
 
-    def set_gripper(self, gripper, state='open'):
-        ind = 0 if state == 'closed' else 1
+    def get_joints(self):
+        return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
+
+    def set_gripper(self, gripper, state='open', reset=False):
+        ind = 0 if state == 'close' else 1
         if gripper == 'left' or gripper == self.left_gripper_id:
-            p.resetJointState(
-                self.robot_id,
-                self.left_fingers[0],
-                self.left_flim[ind],
-                0,
-                physicsClientId=self.pybullet_id
-            )
-            p.resetJointState(
-                self.robot_id,
-                self.left_fingers[1],
-                -self.left_flim[ind],
-                0,
-                physicsClientId=self.pybullet_id
-            )
+            if reset:
+                p.resetJointState(
+                    self.robot_id,
+                    self.left_fingers[0],
+                    self.left_flim[ind],
+                    0,
+                    physicsClientId=self.pybullet_id
+                )
+                p.resetJointState(
+                    self.robot_id,
+                    self.left_fingers[1],
+                    -self.left_flim[ind],
+                    0,
+                    physicsClientId=self.pybullet_id
+                )
+            else:
+                p.setJointMotorControlArray(
+                    bodyIndex=self.robot_id,
+                    jointIndices=self.left_fingers,
+                    controlMode=p.POSITION_CONTROL,
+                    targetPositions=[self.left_flim[ind], -self.left_flim[ind]],
+                    forces=[1000] * 2,
+                    physicsClientId=self.pybullet_id
+                )
         elif gripper == 'right' or gripper == self.right_gripper_id:
-            p.resetJointState(
-                self.robot_id,
-                self.right_fingers[0],
-                self.right_flim[ind],
-                0,
-                physicsClientId=self.pybullet_id
-            )
-            p.resetJointState(
-                self.robot_id,
-                self.right_fingers[1],
-                -self.right_flim[ind],
-                0,
-                physicsClientId=self.pybullet_id
-            )
+            if reset:
+                p.resetJointState(
+                    self.robot_id,
+                    self.right_fingers[0],
+                    self.right_flim[ind],
+                    0,
+                    physicsClientId=self.pybullet_id
+                )
+                p.resetJointState(
+                    self.robot_id,
+                    self.right_fingers[1],
+                    -self.right_flim[ind],
+                    0,
+                    physicsClientId=self.pybullet_id
+                )
+            else:
+                p.setJointMotorControlArray(
+                    bodyIndex=self.robot_id,
+                    jointIndices=self.right_fingers,
+                    controlMode=p.POSITION_CONTROL,
+                    targetPositions=[self.right_flim[ind], -self.right_flim[ind]],
+                    forces=[1000] * 2,
+                    physicsClientId=self.pybullet_id
+                )
 
     def getJointRanges(self, includeFixed=False):
         """
@@ -329,12 +354,10 @@ class Robot():
         filterThreshold=1e-02,
     ):
 
-        init_states = [
-            x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))
-        ]
-
+        init_states = self.get_joints()
         filteredJointPoses = []
         for pos, rot in grasps:
+            self.set_joints(init_states)
             jointPoses, dist = self.accurateIK(
                 endEffectorId,
                 pos,
@@ -363,10 +386,12 @@ class Robot():
                     if len(contacts):
                         collisions.add(obj_pid)
                 if 1 not in collisions:  # dont add if collides with table
-                    filteredJointPoses.append((joint_states, collisions, dist))
+                    filteredJointPoses.append(
+                        (joint_states, collisions, jointPoses, dist)
+                    )
 
         self.set_joints(init_states)
 
         # return pose and collisions in sorted order
         filteredJointPoses = sorted(filteredJointPoses, key=lambda x: (len(x[1]), x[2]))
-        return [x[0:2] for x in filteredJointPoses]
+        return [x[0:3] for x in filteredJointPoses]

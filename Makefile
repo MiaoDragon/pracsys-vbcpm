@@ -27,7 +27,6 @@ all: ./baxter ./baxter_common ./baxter_tools ./baxter_examples ./baxter_interfac
 ./planit:
 	git clone https://github.com/DanManN/planning_baxter.git
 	mv ./planning_baxter/src/planit .
-	mv ./planning_baxter/src/baxter_planit .
 	mv ./planning_baxter/src/baxter_moveit .
 	rm -rf ./planning_baxter
 
