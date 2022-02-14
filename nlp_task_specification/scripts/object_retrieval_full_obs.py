@@ -33,6 +33,9 @@ from dep_graph import DepGraph
 from workspace import Workspace
 from occlusion_scene import OcclusionScene
 
+from std_msgs.msg import Header
+from moveit_msgs.msg import RobotState
+from sensor_msgs.msg import JointState
 from baxter_planner import BaxterPlanner as Planner
 from planit.msg import PercievedObject
 from pybullet_scene_publisher import PybulletScenePublisher
@@ -100,10 +103,10 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
         pcd_cylinder_h = np.random.uniform(low=-0.5, high=0.5, size=n_samples)
         pcd_cylinder_h = pcd_cylinder_h.reshape(-1, 1)
         pcd_cylinder = np.concatenate([pcd_cylinder_xy, pcd_cylinder_h], axis=1)
-        print('pcd cube:')
-        print(pcd_cube)
-        print('pcd cylinder: ')
-        print(pcd_cylinder)
+        # print('pcd cube:')
+        # print(pcd_cube)
+        # print('pcd cylinder: ')
+        # print(pcd_cylinder)
         # basic shape: cube of size 1, cylinder of size 1
 
         # assuming the workspace coordinate system is at the center of the world
@@ -206,7 +209,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         rgbaColor=color
                     )
                 bid = p.createMultiBody(
-                    baseMass=1.0,
+                    baseMass=0.1,
                     baseCollisionShapeIndex=cid,
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
@@ -341,7 +344,7 @@ if not real:
             )  #| (occupied_label == -1)  #| (occupied_label == obj_j)
 
             obj_i_occ_vol += (obj_i_vox & occ_j_vox).sum()
-        print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
+        # print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
         if obj_i_occ_vol / obj_i_vol > 0.9:
             hidden_objs.add(obj_i)
             obj_poses[obj_i - 1] = None
@@ -351,21 +354,22 @@ for obj in obj_ids:
     p.changeDynamics(
         obj,
         -1,
-        lateralFriction=10.0,
-        spinningFriction=10.0,
-        rollingFriction=10.0,
+        lateralFriction=100.0,
+        spinningFriction=100.0,
+        rollingFriction=100.0,
     )
-    print("Dynamics:", p.getDynamicsInfo(obj, -1))
+    # print("Dynamics:", p.getDynamicsInfo(obj, -1))
 
 robot.set_gripper('left', 'open', reset=True)
 robot.set_gripper('right', 'open', reset=True)
-# p.setGravity(0, 0, 0)
+p.setGravity(0, 0, -9.81)
 # p.setRealTimeSimulation(1)
 # pybullet_scene_pub = PybulletScenePublisher(pid)
 # pybullet_scene_pub.publish()
 
 ### Grasp Sampling Test ###
 rest_joints = robot.get_joints()
+# print(rest_joints)
 pose_ind = input("Please Enter Pose Index: ")
 # for i, pose in enumerate(true_obj_poses):
 #     obj_i = i + 1
@@ -375,21 +379,23 @@ while pose_ind != 'q':
     except IndexError:
         pose_ind = input("Please Enter Pose Index: ")
         continue
-    i = obj_i - 1
+    obj_id = obj_ids[obj_i - 1]
     t0 = time.time()
-    poses = robot.getGrasps(obj_ids[i])
+    poses = robot.getGrasps(obj_id, offset2=(0, 0, -0.05))
     filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
     filteredPoses += robot.filterGrasps(robot.right_gripper_id, poses)
     t1 = time.time()
 
     print("Time: ", t1 - t0)
-    for pose, cols, sparse_pose in filteredPoses:
+    for poseInfo in filteredPoses:
+        pose = poseInfo['all_joints']
+        sparse_pose = poseInfo['dof_joints']
+        cols = poseInfo['collisions']
         input("Next?")
         # for iters in range(1000):
         #     robot.setMotors(sparse_pose)
         #     p.stepSimulation()
         robot.set_joints(pose)
-        print(i + 1, [obj_ids.index(x) + 1 for x in cols])
     robot.set_joints(rest_joints)
     pose_ind = input("Please Enter Pose Index: ")
 ### Grasp Sampling Test End ###
@@ -397,24 +403,55 @@ while pose_ind != 'q':
 ### Pick Test ###
 rospy.init_node("planit", anonymous=False)
 planner = Planner(robot, is_sim=True)
+# print(planner.move_group_left.get_current_state().joint_state)
+# print(planner.move_group_right.get_current_state().joint_state)
+# names = planner.move_group_left.get_current_state().joint_state.name
+# position = planner.move_group_left.get_current_state().joint_state.position
+# joint_state = JointState()
+# joint_state.header = Header()
+# joint_state.header.stamp = rospy.Time.now()
+# joint_state.name = names
+# joint_state.position = [0] * len(position)
+# moveit_robot_state = RobotState()
+# moveit_robot_state.joint_state = joint_state
+# planner.move_group_left.set_start_state(moveit_robot_state)
+# planner.move_group_right.set_start_state(moveit_robot_state)
 perception_sub = rospy.Subscriber(
     '/perception', PercievedObject, planner.scene.updatePerception
 )
 time.sleep(2)
 
+print(obj_ids)
 pose_ind = input("Please Enter Pose Index: ")
 while pose_ind != 'q':
     try:
-        obj_i = int(pose_ind[0]) + 1
+        obj_i = int(pose_ind[0])
     except IndexError:
         pose_ind = input("Please Enter Pose Index: ")
         continue
-
-    object_name = f'Obj_{obj_i}'
+    obj_id = obj_ids[obj_i - 1]
+    object_name = f'Obj_{obj_id}'
     for chirality in ('left', 'right'):
+
+        pre_disp_dist = 0.05
+        grip_offset = 0.01
+        t0 = time.time()
+        poses = robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
+        if chirality == 'left':
+            filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
+        else:
+            filteredPoses = robot.filterGrasps(robot.right_gripper_id, poses)
+        t1 = time.time()
+        eof_poses = [
+            x['eof_pose_offset'] for x in filteredPoses if len(x['collisions']) == 0
+        ]
+        print("Filter Time: ", t1 - t0)
         ### pick up red cylinder ###
         res = planner.pick(
             object_name,
+            grasps=eof_poses,
+            grip_offset=grip_offset,
+            pre_disp_dist=pre_disp_dist,
             v_scale=0.50,
             a_scale=1.0,
             grasping_group=chirality + "_hand",

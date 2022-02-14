@@ -72,7 +72,7 @@ class BaxterPlanner(Planner):
 
         self.pb_robot = robot
         gripper_width = robot.right_flim[1] * 2  # gripper width
-        print(gripper_width)
+        # print(gripper_width)
         super().__init__(gripper_width, is_sim, commander_args)
         self.move_group_left = self.MoveGroup('left_arm')
         self.move_group_left.robot = self.pb_robot
@@ -133,12 +133,13 @@ class BaxterPlanner(Planner):
         self,
         obj_name,
         constraints=None,
+        grasps=None,
         grip_offset=0.01,
         pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.05,
         eef_step=0.001,
-        jump_threshold=0.0,
+        jump_threshold=5.0,
         v_scale=0.25,
         a_scale=1.0,
         grasping_group="left_hand",
@@ -157,9 +158,12 @@ class BaxterPlanner(Planner):
         self.do_end_effector('open', group_name=grasping_group)
 
         # plan to pre goal poses
-        poses = self.grasps.get_simple_grasps(
-            obj_name, (0, 0, grip_offset - pre_disp_dist)
-        )
+        if grasps:
+            poses = grasps
+        else:
+            poses = self.grasps.get_simple_grasps(
+                obj_name, (0, 0, grip_offset - pre_disp_dist)
+            )
         move_group.set_pose_targets(poses)
         success, raw_plan, planning_time, error_code = move_group.plan()
         move_group.clear_pose_targets()

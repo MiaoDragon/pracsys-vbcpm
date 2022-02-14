@@ -255,7 +255,9 @@ class Robot():
                     physicsClientId=self.pybullet_id
                 )
 
-    def getGrasps(self, object_id, offset=(0, 0, 0.021), resolution=8):
+    def getGrasps(
+        self, object_id, offset1=(0, 0, 0.01), offset2=(0, 0, -0.05), resolution=8
+    ):
         """
         resolution must be even
         """
@@ -283,13 +285,12 @@ class Robot():
 
         # object position and orientation
         obj_pos, obj_rot = p.getBasePositionAndOrientation(object_id, self.pybullet_id)
+        gw = self.right_flim[1] * 2  # gripper width
 
         # positions along shape
         grasps = []
         if shape[2] == p.GEOM_BOX:
             sx, sy, sz = shape[3]
-
-            gw = self.right_flim[1] * 2  # gripper width
 
             def nearOdd(n):
                 return round((n - 1) / 2) * 2 + 1
@@ -335,13 +336,17 @@ class Robot():
         # elif shape[2] == p.GEOM_MESH:
         # elif shape[2] == p.GEOM_PLANE:
 
+        # adjust offset for finger width
+        offset1 = (offset1[0], offset1[1], offset1[2] + gw / 2)
+        offset2 = (offset2[0], offset2[1], offset2[2] + gw / 2)
+
         poses = []
         for pos, rot in grasps:
-            tpos, trot = p.multiplyTransforms(
-                (0, 0, 0), rot, offset, obj_rot, self.pybullet_id
-            )
-            pose = [tpos + np.add(obj_pos, pos), trot]
-            poses.append(pose)
+            tpos1, trot1 = p.multiplyTransforms((0, 0, 0), rot, offset1, obj_rot)
+            tpos2, trot2 = p.multiplyTransforms((0, 0, 0), rot, offset2, obj_rot)
+            pose1 = [tpos1 + np.add(obj_pos, pos), trot1]
+            pose2 = [tpos2 + np.add(obj_pos, pos), trot2]
+            poses.append([pose1, pose2])
 
         return poses
 
@@ -356,12 +361,14 @@ class Robot():
 
         init_states = self.get_joints()
         filteredJointPoses = []
-        for pos, rot in grasps:
+        for pose1, pose2 in grasps:
+            pos1, rot1 = pose1
+            pos2, rot2 = pose2
             self.set_joints(init_states)
             jointPoses, dist = self.accurateIK(
                 endEffectorId,
-                pos,
-                rot,
+                pos1,
+                rot1,
                 threshold=stopThreshold,
             )
             # input(rot)
@@ -387,11 +394,20 @@ class Robot():
                         collisions.add(obj_pid)
                 if 1 not in collisions:  # dont add if collides with table
                     filteredJointPoses.append(
-                        (joint_states, collisions, jointPoses, dist)
+                        {
+                            'all_joints': joint_states,
+                            'dof_joints': jointPoses,
+                            'eof_pose': list(pos1) + list(rot1),
+                            'eof_pose_offset': list(pos2) + list(rot2),
+                            'collisions': collisions,
+                            'dist': dist
+                        }
                     )
 
         self.set_joints(init_states)
 
         # return pose and collisions in sorted order
-        filteredJointPoses = sorted(filteredJointPoses, key=lambda x: (len(x[1]), x[2]))
-        return [x[0:3] for x in filteredJointPoses]
+        filteredJointPoses = sorted(
+            filteredJointPoses, key=lambda x: (len(x['collisions']), x['dist'])
+        )
+        return filteredJointPoses
