@@ -38,15 +38,15 @@ class BaxterPlanner(Planner):
             super().execute(plan_msg, wait)
             joint_names = plan_msg.joint_trajectory.joint_names
             indices = [self.robot.joint_name2ind[x] for x in joint_names]
-            print(joint_names)
-            print(indices)
+            # print(joint_names)
+            # print(indices)
             points = plan_msg.joint_trajectory.points
             p_secs = 0
             for point in points[1:]:
                 secs = point.time_from_start.to_sec()
                 poss = point.positions
-                print(secs)
-                print(poss)
+                # print(secs)
+                # print(poss)
                 if secs == 0:
                     continue
                 num_steps = int(240 * (secs - p_secs))
@@ -72,11 +72,16 @@ class BaxterPlanner(Planner):
 
         self.pb_robot = robot
         gripper_width = robot.right_flim[1] * 2  # gripper width
+        print(gripper_width)
         super().__init__(gripper_width, is_sim, commander_args)
         self.move_group_left = self.MoveGroup('left_arm')
         self.move_group_left.robot = self.pb_robot
         self.move_group_right = self.MoveGroup('right_arm')
         self.move_group_right.robot = self.pb_robot
+        self.name2group = {
+            'left_arm': self.move_group_left,
+            'right_arm': self.move_group_right
+        }
 
         if not is_sim:
             self.eef_pub_left = rospy.Publisher(
@@ -90,25 +95,22 @@ class BaxterPlanner(Planner):
                 queue_size=5,
             )
 
-    def do_end_effector(self, command, group_name="left_hand", move_group=None):
+    def do_end_effector(self, command, group_name="left_hand"):
         if self.is_sim:
-            if move_group is not None:
-                if group_name == "left_hand":
-                    move_group.gripper_left_cmd = command
-                if group_name == "right_hand":
-                    move_group.gripper_right_cmd = command
+            if group_name == "left_hand":
+                self.move_group_left.gripper_left_cmd = command
+                self.move_group_right.gripper_left_cmd = command
+            if group_name == "right_hand":
+                self.move_group_left.gripper_right_cmd = command
+                self.move_group_right.gripper_right_cmd = command
 
-            # self.pb_robot.set_gripper(group_name.split('_')[0], state=command)
-
-            move_group = self.MoveGroup(group_name)
-            move_group.robot = self.pb_robot
+            # make sim look nice
+            move_group = moveit_commander.MoveGroupCommander(group_name)
             joint_goal = move_group.get_current_joint_values()
-
             if command == 'open':
                 joint_goal = [0.02, -0.02]
             elif command == 'close':
                 joint_goal = [0.018, -0.018]
-
             move_group.go(joint_goal, wait=True)
             move_group.stop()
         else:
@@ -131,33 +133,38 @@ class BaxterPlanner(Planner):
         self,
         obj_name,
         constraints=None,
+        grip_offset=0.01,
         pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.05,
-        eef_step=0.005,
+        eef_step=0.001,
         jump_threshold=0.0,
         v_scale=0.25,
         a_scale=1.0,
         grasping_group="left_hand",
         group_name="left_arm",
     ):
-        move_group = self.MoveGroup(group_name)
-        move_group.robot = self.pb_robot
+        # move_group = self.MoveGroup(group_name)
+        # move_group.robot = self.pb_robot
+        move_group = self.name2group[group_name]
         move_group.set_num_planning_attempts(25)
         move_group.set_planning_time(10.0)
         if constraints is not None:
-            move_group.set_path_constraints(constraints)
+            self.move_group.set_path_constraints(constraints)
         # move_group.set_support_surface_name(support)
 
         # open gripper
-        self.do_end_effector('open', group_name=grasping_group, move_group=move_group)
+        self.do_end_effector('open', group_name=grasping_group)
 
         # plan to pre goal poses
-        poses = self.grasps.get_simple_grasps(obj_name, (0, 0, -pre_disp_dist))
+        poses = self.grasps.get_simple_grasps(
+            obj_name, (0, 0, grip_offset - pre_disp_dist)
+        )
         move_group.set_pose_targets(poses)
         success, raw_plan, planning_time, error_code = move_group.plan()
         move_group.clear_pose_targets()
         if not success:
+            self.do_end_effector('close', group_name=grasping_group)
             return error_code
         else:
             print("Planned pick for", obj_name, "in", planning_time, "seconds.")
@@ -196,7 +203,7 @@ class BaxterPlanner(Planner):
         print("Approached", obj_name, ".")
 
         # close gripper
-        self.do_end_effector('close', group_name=grasping_group, move_group=move_group)
+        self.do_end_effector('close', group_name=grasping_group)
 
         # attach to robot chain
         success = self.attach(
@@ -205,6 +212,7 @@ class BaxterPlanner(Planner):
         if success:
             print("Picked", obj_name, ".")
         else:
+            self.do_end_effector('open', group_name=grasping_group)
             return -1
 
         # displace

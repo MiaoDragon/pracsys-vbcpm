@@ -83,7 +83,7 @@ class Robot():
                     jointIndices=self.left_fingers,
                     controlMode=p.POSITION_CONTROL,
                     targetPositions=[self.left_flim[ind], -self.left_flim[ind]],
-                    forces=[1000] * 2,
+                    forces=[100] * 2,
                     physicsClientId=self.pybullet_id
                 )
         elif gripper == 'right' or gripper == self.right_gripper_id:
@@ -108,7 +108,7 @@ class Robot():
                     jointIndices=self.right_fingers,
                     controlMode=p.POSITION_CONTROL,
                     targetPositions=[self.right_flim[ind], -self.right_flim[ind]],
-                    forces=[1000] * 2,
+                    forces=[100] * 2,
                     physicsClientId=self.pybullet_id
                 )
 

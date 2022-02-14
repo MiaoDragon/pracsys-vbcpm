@@ -348,6 +348,13 @@ if not real:
     print(hidden_objs)
 
 for obj in obj_ids:
+    p.changeDynamics(
+        obj,
+        -1,
+        lateralFriction=10.0,
+        spinningFriction=10.0,
+        rollingFriction=10.0,
+    )
     print("Dynamics:", p.getDynamicsInfo(obj, -1))
 
 robot.set_gripper('left', 'open', reset=True)
@@ -408,7 +415,7 @@ while pose_ind != 'q':
         ### pick up red cylinder ###
         res = planner.pick(
             object_name,
-            v_scale=0.75,
+            v_scale=0.50,
             a_scale=1.0,
             grasping_group=chirality + "_hand",
             group_name=chirality + "_arm",
@@ -416,8 +423,6 @@ while pose_ind != 'q':
         print(res, type(res))
         if res is True:
             break
-        planner.detach(object_name)
-        robot.set_gripper(chirality, state='open', reset=False)
         #TODO back to rest pose
 
     pose_ind = input("Please Enter Pose Index: ")
