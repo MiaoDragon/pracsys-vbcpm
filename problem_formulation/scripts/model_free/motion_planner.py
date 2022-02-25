@@ -108,7 +108,7 @@ class MotionPlanner():
             sys.exit(1)
 
         gc.collect()
-        rospy.sleep(2.0)
+        rospy.sleep(.5)
 
     def wait(self, time):
         rospy.sleep(time)
@@ -133,7 +133,7 @@ class MotionPlanner():
         pcd_msg = pcl2.create_cloud_xyz32(header, total_pcd)
         # while True:
         self.pcd_pub.publish(pcd_msg)
-        rospy.sleep(1.0)
+        rospy.sleep(0.5)
         # input('after publish...')
         del total_pcd
         del pcd_msg
@@ -144,20 +144,14 @@ class MotionPlanner():
     def set_collision_env(self, occlusion, occluded, occupied):
         # pcd -> octomap
         # clear environment first
-        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-
         self.clear_octomap()
         # rospy.sleep(2.0)
-        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print('clear_octomap increment memory: ', memory_after - memory_before)
-
         # collision_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
         #                                  occluded | occupied, [1,0,0])
         # o3d.visualization.draw_geometries([collision_voxel])
 
 
         # * generate point cloud for occlusion space
-        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
         occluded_pcd = occlusion.sample_pcd(occluded)
         occupied_pcd = occlusion.sample_pcd(occupied)
@@ -170,7 +164,7 @@ class MotionPlanner():
         pcd_msg = pcl2.create_cloud_xyz32(header, total_pcd)
         # while True:
         self.pcd_pub.publish(pcd_msg)
-        rospy.sleep(1.0)
+        rospy.sleep(0.1)
         # input('after publish...')
         del total_pcd
         del occupied_pcd
@@ -178,9 +172,6 @@ class MotionPlanner():
         del pcd_msg
 
         gc.collect()
-        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print('set_collision_env increment memory: ', memory_after - memory_before)
-        print('after motion_planner setting collision env..')
         # objgraph.show_most_common_types(limit=20)
         # objgraph.show_growth(limit=3)
 
@@ -335,7 +326,6 @@ class MotionPlanner():
         del mesh_faces
 
         print('after suction_with_obj_plan..')
-        objgraph.show_growth(limit=10)
 
         return suction_joint_dict_list
 
@@ -347,8 +337,6 @@ class MotionPlanner():
 
     def motion_plan_joint(self, start_joint_dict, goal_joint_dict, robot, attached_acos=[]):
 
-        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print("memory usage before motion_plan_joint: ", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
         joint_state = JointState()
         # joint_state.header = Header()
         # joint_state.header.stamp = rospy.Time.now()
@@ -370,38 +358,23 @@ class MotionPlanner():
             new_goal_joint_dict[name] = val
         goal_joint_dict = new_goal_joint_dict
         
-        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-
-        self.move_group.set_planner_id('BiTRRT')
+        self.move_group.set_planner_id('PersistentLazyPRMstar')
         self.move_group.set_start_state(moveit_robot_state)
         
         self.move_group.set_joint_value_target(goal_joint_dict)
 
-        self.move_group.set_planning_time(30)
+        self.move_group.set_planning_time(15)
         self.move_group.set_num_planning_attempts(5)
         self.move_group.allow_replanning(False)
 
-        print('increment memory before calling move_group.plan: ', memory_after - memory_before)
-
-        memory_before = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print('memory before: ', memory_before)
 
         plan = self.move_group.plan()  # returned value: tuple (flag, RobotTrajectory, planning_time, error_code)
-        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print('increment memory after move_group.plan(): ', memory_after - memory_before)
-
 
         # input("next...")
         del moveit_robot_state
         del new_goal_joint_dict
 
         
-        memory_after = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        print('increment memory after motion_plan_joint: ', memory_after - memory_before)
-
-        print('after motion_plan_joint..')
-        objgraph.show_growth(limit=10)
-
         return plan
 
     def straight_line_motion(self, start_joint_dict, start_tip_pose, relative_tip_pose, robot, workspace, 

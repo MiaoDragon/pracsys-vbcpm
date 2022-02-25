@@ -101,8 +101,9 @@ class SLAMPerception():
                 # compute bounding box for the conservative region
                 voxel_x_min = self.occlusion.voxel_x[occluded].reshape(-1)-np.ceil(self.object_params['resol'][0]*self.object_params['scale'])-1
                 voxel_y_min = self.occlusion.voxel_y[occluded].reshape(-1)-np.ceil(self.object_params['resol'][1]*self.object_params['scale'])-1
-                voxel_z_min = self.occlusion.voxel_z.reshape(-1)-np.ceil(self.object_params['resol'][2]*self.object_params['scale'])-1
-                voxel_z_min = voxel_z_min[:len(voxel_x_min)]
+                voxel_z_min = np.zeros(len(voxel_x_min)) + self.occlusion.voxel_z.min()
+                # voxel_z_min = self.occlusion.voxel_z.reshape(-1)-np.ceil(self.object_params['resol'][2]*self.object_params['scale'])-1
+                # voxel_z_min = voxel_z_min[:len(voxel_x_min)]
 
                 if len(voxel_z_min) == 0:
                     continue
@@ -149,8 +150,6 @@ class SLAMPerception():
                 self.obj_initial_poses[obj_id] = new_object.transform
             
             if obj_id in valid_objects:
-                if not self.objects[obj_id].active:
-                    print('object ', obj_id, ' becomes active')
                 self.objects[obj_id].set_active()
                 
 
@@ -201,6 +200,26 @@ class SLAMPerception():
             obj_opt_pcds[obj_id] = opt_pcd
         # label the occlusion
         occlusion_label, occupied_label, occluded_dict, occupied_dict = self.occlusion.label_scene_occlusion(occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_pcds, obj_opt_pcds)
+
+
+
+        # # visualize the object
+        # viz_pcds = []
+        # for obj_id, obj in self.objects.items():
+        #     pcd = obj.sample_conservative_pcd(n_sample=10)
+        #     pcd = obj.transform[:3,:3].dot(pcd.T).T + obj.transform[:3,3]
+        #     print('pcd lower: ')
+        #     print(pcd[:,2].min())
+
+        #     pcd = self.occlusion.world_in_voxel_rot.dot(pcd.T).T + self.occlusion.world_in_voxel_tran
+        #     pcd = pcd / self.occlusion.resol
+        #     viz_pcds.append(visualize_pcd(pcd, [1,0,0]))
+            
+        # vis_voxel = visualize_voxel(self.occlusion.voxel_x, self.occlusion.voxel_y, self.occlusion.voxel_z,
+        #                             occluded, [0,0,1])
+        # o3d.visualization.draw_geometries(viz_pcds + [vis_voxel])
+        
+
 
 
         # record new depth image
@@ -454,7 +473,6 @@ class SLAMPerception():
 
 
                         if (occupied_dict[obj_id]&(~after_occupied_dict[obj_id])).sum() != 0:
-                            print("non-empty")
                             voxel_i = visualize_voxel(self.occlusion.voxel_x,self.occlusion.voxel_y,self.occlusion.voxel_z,occupied_dict[obj_id]&(~after_occupied_dict[obj_id]),color_pick[obj_id])
                             voxels.append(voxel_i)
             if LOG:
