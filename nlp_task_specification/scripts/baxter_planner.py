@@ -244,3 +244,117 @@ class BaxterPlanner(Planner):
         move_group.stop()
         print("Displaced", obj_name, ".")
         return True
+
+    def place(
+        self,
+        obj_name,
+        partial_pose,
+        constraints=None,
+        pre_disp_dir=(0, 0, -1),
+        pre_disp_dist=0.05,
+        post_disp_dir=(0, 0, 1),
+        post_disp_dist=0.1,
+        eef_step=0.005,
+        jump_threshold=0.0,
+        v_scale=0.25,
+        a_scale=1.0,
+        grasping_group="left_hand",
+        group_name="left_arm",
+    ):
+        # move_group = moveit_commander.MoveGroupCommander(group_name)
+        move_group = self.name2group[group_name]
+        move_group.set_num_planning_attempts(25)
+        move_group.set_planning_time(10.0)
+        if constraints is not None:
+            move_group.set_path_constraints(constraints)
+        # move_group.set_support_surface_name(support)
+
+        # plan preplacement
+        displacement = [pre_disp_dist * x for x in pre_disp_dir]
+        # poses = self.grasps.get_simple_placements(obj_name, partial_pose, displacement)
+        epose = move_group.get_current_pose().pose
+        epose.position.x = partial_pose[0]
+        epose.position.y = partial_pose[1]
+        epose.position.z = partial_pose[2]
+        poses = [copy.deepcopy(epose)]
+
+        success, raw_plan, planning_time, error_code = self.plan_ee_poses(
+            poses, group_name=group_name
+        )
+        if not success:
+            return error_code
+        else:
+            print("Planned placement for", obj_name, "in", planning_time, "seconds.")
+
+        # retime and execute trajectory
+        plan = move_group.retime_trajectory(
+            self.robot.get_current_state(),
+            raw_plan,
+            velocity_scaling_factor=v_scale,
+            acceleration_scaling_factor=a_scale,
+        )
+        move_group.execute(plan, wait=True)
+        move_group.stop()
+        print("Preplaced.")
+
+        # slide to placement
+        scale = pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
+        wpose = move_group.get_current_pose().pose
+        wpose.position.x += scale * pre_disp_dir[0]
+        wpose.position.y += scale * pre_disp_dir[1]
+        wpose.position.z += scale * pre_disp_dir[2]
+        waypoints = [copy.deepcopy(wpose)]
+        raw_plan, fraction = move_group.compute_cartesian_path(
+            waypoints, eef_step, jump_threshold, avoid_collisions=False
+        )
+        print(
+            "Planned placement approach", fraction * pre_disp_dist, "for", obj_name, "."
+        )
+        if fraction < 0.5:
+            return -fraction
+
+        # retime and execute trajectory
+        plan = move_group.retime_trajectory(
+            self.robot.get_current_state(),
+            raw_plan,
+            velocity_scaling_factor=v_scale,
+            acceleration_scaling_factor=a_scale,
+        )
+        move_group.execute(plan, wait=True)
+        move_group.stop()
+        print("Approached placement for", obj_name, ".")
+
+        # open gripper
+        self.do_end_effector('open', group_name=grasping_group)
+
+        # detach from robot chain
+        success = self.detach(obj_name, group_name=group_name)
+        if success:
+            print("Placed", obj_name, ".")
+        else:
+            return -1
+
+        # displace
+        scale = post_disp_dist / dist(post_disp_dir, (0, 0, 0))
+        wpose = move_group.get_current_pose().pose
+        wpose.position.x += scale * post_disp_dir[0]
+        wpose.position.y += scale * post_disp_dir[1]
+        wpose.position.z += scale * post_disp_dir[2]
+        waypoints = [copy.deepcopy(wpose)]
+        raw_plan, fraction = move_group.compute_cartesian_path(
+            waypoints, eef_step, jump_threshold, avoid_collisions=False
+        )
+        print("Planned displacement", fraction * post_disp_dist, "from", obj_name, ".")
+        if fraction < 0.5:
+            return -fraction
+
+        # retime and execute trajectory
+        plan = move_group.retime_trajectory(
+            self.robot.get_current_state(),
+            raw_plan,
+            velocity_scaling_factor=v_scale,
+            acceleration_scaling_factor=a_scale,
+        )
+        move_group.execute(plan, wait=True)
+        move_group.stop()
+        print("Displaced", obj_name, ".")

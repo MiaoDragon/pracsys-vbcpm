@@ -446,7 +446,11 @@ while pose_ind != 'q':
             x['eof_pose_offset'] for x in filteredPoses if len(x['collisions']) == 0
         ]
         print("Filter Time: ", t1 - t0)
-        ### pick up red cylinder ###
+
+        if len(eof_poses) == 0:
+            print("No valid grasps of", object_name, "for", chirality, "arm!")
+            continue
+        ### pick object ###
         res = planner.pick(
             object_name,
             grasps=eof_poses,
@@ -458,9 +462,20 @@ while pose_ind != 'q':
             group_name=chirality + "_arm",
         )
         print(res, type(res))
-        if res is True:
-            break
-        #TODO back to rest pose
+        if res is not True:
+            continue
+        ### place object ###
+        pos, rot = p.getBasePositionAndOrientation(obj_id)
+        res = planner.place(
+            object_name,
+            [0.6, 0.3, 1.15],
+            # [0.6, 0.3, 1.15] + list(rot),
+            v_scale=0.50,
+            a_scale=1.0,
+            grasping_group=chirality + "_hand",
+            group_name=chirality + "_arm",
+        )
+        break
 
     pose_ind = input("Please Enter Pose Index: ")
 ### Pick End ###
