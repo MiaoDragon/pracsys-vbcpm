@@ -7,7 +7,7 @@ from segmentation import GroundTruthSegmentation
 from target_recognition import GroundTruthTargetRecognition
 import numpy as np
 import cv2
-
+import time
 class PerceptionPipeline():
     def __init__(self, occlusion_params, object_params, perception_params):
         self.slam_system = SLAMPerception(occlusion_params, object_params)
@@ -41,11 +41,13 @@ class PerceptionPipeline():
         self.last_assoc = assoc
 
         # objects that have been revealed will stay revealed
-        valid_objects = self.obtain_unhidden_objects(robot_ids, workspace_ids)
 
+        valid_objects = self.obtain_unhidden_objects(robot_ids, workspace_ids)
+        
         object_hide_set = self.obtain_object_hide_set(robot_ids, workspace_ids)
+
         self.current_hide_set = object_hide_set
-            
+
         self.slam_system.perceive(depth_img, color_img, seg_img, 
                                     assoc, self.data_assoc.obj_ids_reverse, object_hide_set, 
                                     camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], 
@@ -58,7 +60,6 @@ class PerceptionPipeline():
 
         for obj_id in valid_objects:
             self.slam_system.objects[obj_id].set_active()
-            
 
     def sense_object(self, obj_id, camera, robot_ids, workspace_ids):
         color_img, depth_img, seg_img = camera.sense()

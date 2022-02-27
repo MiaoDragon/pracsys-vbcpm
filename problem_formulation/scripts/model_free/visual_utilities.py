@@ -280,23 +280,28 @@ def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj
     for i in range(len(nodes)):
         color = 'white'
         if nodes[i] in valid_obj_ids:
-            color = 'blue'
+            color = 'skyblue'
         if nodes[i] in moved_obj_ids:
-            color = 'red'
+            color = 'lightpink'
         if nodes[i] == move_obj_id:
-            color = 'green'
+            color = 'seagreen'
 
         dot.add_node(nodes[i], pos='%f,%f!' % (-10*obj_pybullet_poses[i][1,3],10*obj_pybullet_poses[i][0,3]),
                      fillcolor=color, style='filled')
     for i in range(len(edges)):
         dot.add_edge(edges[i][0], edges[i][1])
-    
-    dot.add_node('cam', pos='%f,%f!' % (-10*camera.info['extrinsics'][1,3],10*camera.info['extrinsics'][0,3]))    
+
+    dot.add_node('cam', pos='%f,%f!' % (-25*camera.info['extrinsics'][1,3],25*camera.info['extrinsics'][0,3]))    
+
+
+    # dot.add_node('cam', pos='%f,%f!' % (-10*camera.info['extrinsics'][1,3],10*camera.info['extrinsics'][0,3]))    
     for node_i in visible_set:
         dot.add_edge(node_i, 'cam')
 
     dot.layout()
     dot.draw("graph.png", format="png")
+    dot.draw("graph.pdf", format="pdf")
+
     img = mpimg.imread('graph.png')
     plt.clf()
     plt.imshow(img)

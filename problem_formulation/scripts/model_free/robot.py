@@ -234,7 +234,7 @@ class Robot():
         link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
         pos = np.array(link_state[4])
         ori = link_state[5] # x y z w
-        ori = np.array([ori[1],ori[2],ori[3],ori[0]])
+        ori = np.array([ori[3],ori[0],ori[1],ori[2]])  # w x y z
 
         if joints is not None:
             # reset
@@ -278,6 +278,7 @@ class Robot():
         return valid, joint_vals
 
     def get_ik(self, link_name, position, orientation, rest_pose, collision_check=False, workspace=None):
+        # collision_check = False
         # quat: x y z w
         # print('before IK')
         # print('lower_lim: ',self.lower_lim)
@@ -309,10 +310,8 @@ class Robot():
 
 
         if (dof_joint_vals > self.upper_lim[:len(dof_joint_vals)]).sum()>0 or (dof_joint_vals<self.lower_lim[:len(dof_joint_vals)]).sum()>0:
-            # print('joint values not within range')
             valid = False
         if not valid:
-            # print('IK failed')
             return valid, dof_joint_vals
         # check collision
         if collision_check:

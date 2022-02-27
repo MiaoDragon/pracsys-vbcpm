@@ -33,7 +33,7 @@ import time
 LOG = 1
 SNAPSHOT = 0
 
-class PipelineBaseline():
+class PipelineBaselineTest():
     def __init__(self, problem_def):
         """
         problem_def: a dict containing useful information of the problem
@@ -157,14 +157,14 @@ class PipelineBaseline():
         self.transform_obj_pybullet(transform, obj_pybullet_id)
 
 
-    def execute_traj(self, joint_dict_list, duration=0.001):
+    def execute_traj(self, joint_dict_list):
         # given a joint_dict_list, set the robot joint values at those locations
         for i in range(len(joint_dict_list)):
             self.robot.set_joint_from_dict(joint_dict_list[i])
-            # time.sleep(duration)
+            time.sleep(0.01)
             # input("next point...")
 
-    def execute_traj_with_obj(self, joint_dict_list, move_obj_idx, move_obj_pybullet_id, duration=0.01):
+    def execute_traj_with_obj(self, joint_dict_list, move_obj_idx, move_obj_pybullet_id):
         """
         obtain the relative transform of the object and the end-effector link, and the relative transform
         of the object reconstruction with end-effector link
@@ -193,7 +193,7 @@ class PipelineBaseline():
             obj_recon_transform = transform.dot(obj_recon_in_link)
 
             self.transform_obj_from_pose_both(obj_recon_transform, move_obj_idx, move_obj_pybullet_id)
-            # time.sleep(duration)
+            time.sleep(0.01)
 
             
             # # transform the object
@@ -206,6 +206,7 @@ class PipelineBaseline():
             
     def pipeline_sim(self):
         # sense & perceive
+
         self.perception.pipeline_sim(self.camera, [self.robot.robot_id], self.workspace.component_ids)
 
         # update data
@@ -364,10 +365,10 @@ class PipelineBaseline():
                 occlusion_filter = self.mask_pcd_xy_with_padding(occlusion_filter, pcd, padding)
                 occupied_filter = self.mask_pcd_xy_with_padding(occupied_filter, pcd, padding)
                 del pcd
-
-
-        self.motion_planner.set_collision_env(self.perception.slam_system.occlusion, 
-                                            occlusion_filter, occupied_filter)
+        
+        self.motion_planner.set_collision(occlusion_filter | occupied_filter, 
+                            self.perception.slam_system.occlusion.transform, 
+                            self.perception.slam_system.occlusion.resol)
         del occlusion_filter
         del occupied_filter
 
@@ -382,12 +383,34 @@ class PipelineBaseline():
 
     def plan_to_suction_pose(self, obj_id, suction_pose_in_obj, suction_joint, start_joint_dict):
         # self.motion_planner = motion_planner.MotionPlanner(self.robot, self.workspace)
+        self.set_collision_env(list(self.prev_occluded_dict.keys()), [obj_id], [obj_id], padding=5)
         obj = self.perception.slam_system.objects[obj_id]
+        start_time = time.time()
         suction_joint_dict_list = self.motion_planner.suction_plan(start_joint_dict, obj.transform.dot(suction_pose_in_obj), 
                                                                     suction_joint, self.robot, workspace=self.workspace)
+        print('motion plan takes time: ', time.time() - start_time)
         if len(suction_joint_dict_list) == 0:
+            print('plan failed.')
             return [], []
-            # return [], []
+
+        col_voxel = visualize_voxel(self.perception.slam_system.occlusion.voxel_x,
+                        self.perception.slam_system.occlusion.voxel_y,
+                        self.perception.slam_system.occlusion.voxel_z,
+                        self.motion_planner.collision_voxel,
+                        [0,0,1])
+        
+        for i in range(len(suction_joint_dict_list)):
+            joint_dict = suction_joint_dict_list[i]
+            rpcd = self.robot.get_pcd_at_joints(joint_dict)
+            transform_rot = self.perception.slam_system.occlusion.world_in_voxel_rot
+            transform_tran = self.perception.slam_system.occlusion.world_in_voxel_tran
+            rpcd = transform_rot.dot(rpcd.T).T + transform_tran
+            rpcd = rpcd / self.perception.slam_system.occlusion.resol
+            v_pcd = visualize_pcd(rpcd, [1,0,0])
+            o3d.visualization.draw_geometries([col_voxel, rpcd])
+
+        input('finished...')
+
         # lift up
         relative_tip_pose = np.eye(4)
         relative_tip_pose[:3,3] = np.array([0,0,0.05]) # lift up by 0.05
@@ -429,16 +452,15 @@ class PipelineBaseline():
             # relative_tip_pose[:3,3] = tip_pose[:3,3] - current_tip_pose[:3,3]
             relative_tip_pose[1:3,3] = 0 # only keep the x value
 
-            # self.motion_planner.clear_octomap()
             joint_dict_list = self.motion_planner.straight_line_motion(start_joint_dict, current_tip_pose, relative_tip_pose, self.robot,
-                                                                    collision_check=False, workspace=self.workspace)
-
+                                                                    collision_check=True, workspace=self.workspace)
 
             intermediate_joint_dict_list_1 = joint_dict_list
 
         # reset collision env: to remove the object to be moved
+        self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=5)
 
-        # self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=3)
+
         joint_dict_list = self.motion_planner.suction_with_obj_plan(intermediate_joint_dict_list_1[-1], suction_pose_in_obj, 
                                                                     intermediate_joint, self.robot, 
                                                                     move_obj_idx, self.perception.slam_system.objects)
@@ -479,7 +501,6 @@ class PipelineBaseline():
         planning_info['camera'] = self.camera
 
         
-        # self.motion_planner.clear_octomap()
 
         start_time = time.time()
         sense_pose, selected_tip_in_obj, tip_pose, start_joint_angles, joint_angles = \
@@ -488,7 +509,7 @@ class PipelineBaseline():
         print('sample_sense_pose takes time: ', end_time-start_time)
 
 
-        # self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx])
+        self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx])
 
         start_time = time.time()
         joint_dict_list = self.motion_planner.suction_with_obj_plan(self.robot.joint_dict, tip_pose_in_obj, joint_angles, self.robot, 
@@ -668,8 +689,6 @@ class PipelineBaseline():
         move the valid object out of the workspace, sense it and the environment, and place back
         """
 
-        self.motion_planner.clear_octomap()
-
         start_time = time.time()
         _, suction_poses_in_obj, suction_joints = self.pre_move(move_obj_idx, moved_objects)
         end_time = time.time()
@@ -708,10 +727,6 @@ class PipelineBaseline():
         print('generate_intermediate_poses takes time: ', end_time - start_time)
 
 
-        # set collision environment and reuse afterwards
-        # (plan to suction pose, intermediate pose and sense pose do not change collision env)
-        self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=3)
-
         for i in range(len(suction_poses_in_obj)):
             suction_pose_in_obj = suction_poses_in_obj[i]
             suction_joint = suction_joints[i]
@@ -739,9 +754,9 @@ class PipelineBaseline():
             if len(retreat_joint_dict_list) == 0:
                 continue
 
-            self.execute_traj(pick_joint_dict_list, duration=0.3)
-            self.execute_traj_with_obj(lift_joint_dict_list, move_obj_idx, move_obj_pybullet_id, duration=0.3)
-            self.execute_traj_with_obj(retreat_joint_dict_list, move_obj_idx, move_obj_pybullet_id, duration=0.3)
+            self.execute_traj(pick_joint_dict_list)
+            self.execute_traj_with_obj(lift_joint_dict_list, move_obj_idx, move_obj_pybullet_id)
+            self.execute_traj_with_obj(retreat_joint_dict_list, move_obj_idx, move_obj_pybullet_id)
 
 
             start_time = time.time()
@@ -768,7 +783,7 @@ class PipelineBaseline():
                     continue
 
                 start_time = time.time()
-                # self.pipeline_sim()
+                self.pipeline_sim()
                 end_time = time.time()
                 print('pipeline_sim takes time: ', end_time - start_time)
 
@@ -790,19 +805,16 @@ class PipelineBaseline():
                 last_joint_dict = obj_sense_joint_dict_list[-1]
                 traj1 = self.generate_rot_traj(last_joint_dict, waypoint1)
                 self.execute_traj_with_obj(traj1, move_obj_idx, move_obj_pybullet_id)
-                # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.pipeline_sim()
 
 
                 traj2 = self.generate_rot_traj(traj1[-1], waypoint2)
                 self.execute_traj_with_obj(traj2, move_obj_idx, move_obj_pybullet_id)
-                # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.pipeline_sim()
 
                 traj3 = self.generate_rot_traj(traj2[-1], waypoint3)
                 self.execute_traj_with_obj(traj3, move_obj_idx, move_obj_pybullet_id)
-                # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.pipeline_sim()
 
 
                 traj4 = self.generate_rot_traj(traj3[-1], current_angle)
@@ -810,8 +822,7 @@ class PipelineBaseline():
 
 
                 self.perception.slam_system.objects[move_obj_idx].set_sensed()
-                # self.pipeline_sim()
-
+                self.pipeline_sim()
                 # input("after sensing")
 
             planning_info = dict()
@@ -1221,48 +1232,7 @@ class PipelineBaseline():
         """
         rearrange the blocking objects
         """
-        obj_pcds = [self.perception.slam_system.objects[obj_i].sample_conservative_pcd() for obj_i in obj_ids]
-        moveable_obj_pcds = [self.perception.slam_system.objects[obj_i].sample_conservative_pcd() for obj_i in moveable_obj_ids]
-        obj_start_poses = [self.perception.slam_system.objects[obj_i].transform for obj_i in obj_ids]
-        moveable_obj_start_poses = [self.perception.slam_system.objects[obj_i].transform for obj_i in moveable_obj_ids]
-        moved_objs = [self.perception.slam_system.objects[obj_i] for obj_i in obj_ids]
-        moveable_objs = [self.perception.slam_system.objects[obj_i] for obj_i in moveable_obj_ids]
-
-        plt.ion()
-        # plt.figure(figsize=(10,10))
-
-        searched_objs, transfer_trajs, searched_trajs, reset_traj = \
-            rearrangement_plan.rearrangement_plan(moved_objs, obj_pcds, obj_start_poses, moveable_objs, 
-                                            moveable_obj_pcds, moveable_obj_start_poses,
-                                            collision_voxel, robot_collision_voxel, 
-                                            self.perception.slam_system.occlusion.transform, 
-                                            self.perception.slam_system.occlusion.resol,
-                                            self.robot, self.workspace, self.perception.slam_system.occlusion,
-                                            self.motion_planner)
-        success = False
-        if searched_objs is not None:
-            total_obj_ids = obj_ids + moveable_obj_ids
-            # execute the rearrangement plan
-            for i in range(len(searched_objs)):
-                move_obj_idx = total_obj_ids[searched_objs[i]]
-                move_obj_pybullet_id = self.perception.data_assoc.obj_ids_reverse[move_obj_idx]
-                self.execute_traj(transfer_trajs[i], duration=0.3)     
-                self.execute_traj_with_obj(searched_trajs[i], move_obj_idx, move_obj_pybullet_id, duration=0.3)
-            # reset
-            self.execute_traj(reset_traj)
-            success = True
-        else:
-            success = False
-        # input('after rearrange...')
-
-        del obj_pcds
-        del moveable_obj_pcds
-        del obj_start_poses
-        del moveable_obj_start_poses
-        del moved_objs
-        del moveable_objs
-
-        return success
+        return False
 
     def run_pipeline(self, iter_n=10):
         # select object
@@ -1329,7 +1299,7 @@ class PipelineBaseline():
 
             update_occlusion_graph(self.pybullet_obj_ids, pybullet_obj_pose_list, moved_pybullet_ids, valid_pybullet_ids, 
                                    move_obj_pybullet_id, self.camera, self.pid)
-            # input('after viewing the occlusion graph...')
+            input('after viewing the occlusion graph...')
 
             # objgraph.show_growth(limit=10)
             res = self.move_and_sense(move_obj_idx, move_obj_pybullet_id, moved_objects)
@@ -1341,3 +1311,92 @@ class PipelineBaseline():
                 valid_objects.pop(0)
                 valid_objects.append(move_obj_idx)
             self.pipeline_sim()
+
+
+
+
+
+import json
+import random
+import numpy as np
+import rospkg
+import pybullet as p
+from workspace import Workspace
+from robot import Robot
+import os
+import time
+from camera import Camera
+
+import open3d as o3d
+from perception_pipeline import PerceptionPipeline
+
+import transformations as tf
+
+from visual_utilities import *
+from object_retrieval_partial_obs_prob_generation import load_problem, random_one_problem
+from prob_planner import ProbPlanner
+
+from motion_planning.pose_rrt_naive import MotionPlanner as MotionPlanner
+import sys
+import pickle
+
+
+
+def main():
+    if int(sys.argv[1]) > 0:
+        print('argv: ', sys.argv)
+        # load previously generated object
+        f = open('saved_problem.pkl', 'rb')
+        data = pickle.load(f)
+        f.close()
+        scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size = data
+        data = load_problem(scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, 
+                            target_pose, target_pcd, target_obj_shape, target_obj_size)
+        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = data
+        f = open(scene_f, 'r')
+        scene_dict = json.load(f)        
+        
+        print('loaded')
+    else:
+        scene_f = 'scene1.json'
+        data = random_one_problem(scene=scene_f, level=1, num_objs=7, num_hiding_objs=1)
+        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_shapes, obj_sizes, \
+            target_pose, target_pcd, target_obj_id, target_obj_shape, target_obj_size = data
+        data = (scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size)
+        save = input('save current scene? 0 - no, 1 - yes...')
+        f = open(scene_f, 'r')
+        scene_dict = json.load(f)
+        f.close()
+        if int(save) == 1:
+            f = open('saved_problem.pkl', 'wb')
+            pickle.dump(data, f)
+            f.close()
+            print('saved')
+
+    problem_def = {}
+    problem_def['pid'] = pid
+    problem_def['scene_dict'] = scene_dict
+    problem_def['robot'] = robot
+    problem_def['workspace'] = workspace
+    problem_def['camera'] = camera
+    problem_def['obj_pcds'] = obj_pcds
+    problem_def['obj_ids'] = obj_ids
+    problem_def['target_obj_pcd'] = target_pcd
+    problem_def['target_obj_id'] = target_obj_id
+    problem_def['obj_poses'] = obj_poses
+    problem_def['target_obj_pose']= target_pose
+    motion_planner = MotionPlanner(robot, workspace)
+    problem_def['motion_planner'] = motion_planner
+    
+    construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
+    # input('after constrcuting occlusion graph')
+
+    robot.set_motion_planner(motion_planner)
+
+    pipeline = PipelineBaselineTest(problem_def)
+
+    # pipeline.solve(ProbPlanner())
+    pipeline.run_pipeline(10)    
+
+if __name__ == "__main__":
+    main()

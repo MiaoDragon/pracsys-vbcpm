@@ -36,7 +36,6 @@ def snapshot_object_selection(objects, moved_objs, occlusion, occlusion_label, o
         if obj.active:
             valid_objects.append(obj_id)
 
-    print('valid_objects: ', valid_objects)
 
     # remove objects that have been moved
     valid_object_set = set(valid_objects) - set(moved_objs)
@@ -124,13 +123,17 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
         # * first check whether the object is in camera view
         transformed_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
 
-        # visualize pybullet
-        delta_transform = transform.dot(np.linalg.inv(obj.transform))
-        new_pybullet_pose = delta_transform.dot(pybullet_obj_pose)
-        quat = tf.quaternion_from_matrix(new_pybullet_pose) # w x y z
 
-        p.resetBasePositionAndOrientation(pybullet_obj_i, new_pybullet_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
+
+        # visualize pybullet
+        # delta_transform = transform.dot(np.linalg.inv(obj.transform))
+        # new_pybullet_pose = delta_transform.dot(pybullet_obj_pose)
+        # quat = tf.quaternion_from_matrix(new_pybullet_pose) # w x y z
+
+        # p.resetBasePositionAndOrientation(pybullet_obj_i, new_pybullet_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
         # input('after sampling.')
+
+
 
         inside_workspace = (transformed_pcd[:,0] >= workspace.region_low[0]-0.05-safety_padding[0]) & \
                                     (transformed_pcd[:,0] < workspace.region_high[0]) & \
@@ -171,6 +174,7 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
             # input("next...")
             continue
         
+
         # * then check whether it's reachable
         filtered_tip_poses_in_obj = []
         filtered_start_suction_joints = []
@@ -187,6 +191,7 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
 
             if not valid:
                 continue
+
             prev_joint_vals = robot.joint_vals
             robot.set_joints(dof_joint_vals)
 
@@ -201,13 +206,31 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
             robot.set_joints(prev_joint_vals)
             if collision:
                 continue
+
+            # * robot shouldn't be within camera view
+            transformed_pcd = robot.get_pcd_at_joints(dof_joint_vals)
+            transformed_pcd = cam_transform[:3,:3].dot(transformed_pcd.T).T + cam_transform[:3,3]
+            transformed_pcd[:,0] = transformed_pcd[:,0] / transformed_pcd[:,2] * fx + cx
+            transformed_pcd[:,1] = transformed_pcd[:,1] / transformed_pcd[:,2] * fy + cy
+
+            pcd_pixel_idx = np.floor(transformed_pcd[:,:2]).astype(int)
+            valid_filter = (pcd_pixel_idx[:,0]>=0) & (pcd_pixel_idx[:,0]<img_size) & \
+                            (pcd_pixel_idx[:,1]>=0) & (pcd_pixel_idx[:,1]<img_size)
+            pcd_pixel_idx = pcd_pixel_idx[valid_filter]
+            if (len(pcd_pixel_idx) > 0) and (seg_img[pcd_pixel_idx[:,1], pcd_pixel_idx[:,0]].sum() > 0):
+                # within camera view
+                continue
+
+
             filtered_tip_poses_in_obj.append(selected_tip_in_obj)
             filtered_start_suction_joints.append(start_suction_joint)
             filtered_intermediate_joints.append(dof_joint_vals)
 
-        quat = tf.quaternion_from_matrix(pybullet_obj_pose) # w x y z
-        p.resetBasePositionAndOrientation(pybullet_obj_i, pybullet_obj_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
+
+        # quat = tf.quaternion_from_matrix(pybullet_obj_pose) # w x y z
+        # p.resetBasePositionAndOrientation(pybullet_obj_i, pybullet_obj_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
         # input('after resetting.')
+
 
         if len(filtered_tip_poses_in_obj) > 0:
             break
@@ -217,7 +240,7 @@ def generate_intermediate_poses(obj_i, pybullet_obj_i, pybullet_obj_pose, object
 
 def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects, 
                         seg_img, occlusion, occluded_label, occupied_label, 
-                        selected_tip_in_obj, joint_dict, camera, robot, workspace):
+                        selected_tip_in_obj, joint_dict, camera, robot, workspace, sample_n=5):
     """
     sample reachable intermediate pose that is outside of the camera view
     UPDATE: we want the object to not hide the parts where it is located before
@@ -228,6 +251,14 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
     y_max = workspace.region_high[1]*1.1
     z_min = workspace.region_low[2]*0.8
     z_max = workspace.region_high[2]*1.1
+
+    # x_max = workspace.region_low[0]-0.05
+    # x_min = workspace.region_low[0]-0.4  #robot.transform[0,3] + 0.6
+    # y_min = workspace.region_low[1]*0.9
+    # y_max = workspace.region_high[1]*1.1
+    # z_min = workspace.region_low[2]*0.8
+    # z_max = workspace.region_high[2]*1.1
+
 
     extrinsics = camera.info['extrinsics']
     intrinsics = camera.info['intrinsics']
@@ -244,7 +275,7 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
     # make sure the object pcd is not in view
     max_uncertainty = 0
     max_net_transform = objects[obj_i].transform
-    for sample_i in range(10):
+    for sample_i in range(sample_n):
         # get 10 sample position and find the one with the maximum uncertainty
         while True:
             pos = np.random.uniform(low=[x_min,y_min,z_min], high=[x_max,y_max,z_max])
@@ -264,11 +295,14 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
             # * first check whether the object is in camera view
             transformed_pcd = transform[:3,:3].dot(obj_pcd.T).T + transform[:3,3]
 
+
+
             # visualize pybullet
-            delta_transform = transform.dot(np.linalg.inv(obj.transform))
-            new_pybullet_pose = delta_transform.dot(pybullet_obj_pose)
-            quat = tf.quaternion_from_matrix(new_pybullet_pose) # w x y z
-            p.resetBasePositionAndOrientation(pybullet_obj_i, new_pybullet_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
+            # delta_transform = transform.dot(np.linalg.inv(obj.transform))
+            # new_pybullet_pose = delta_transform.dot(pybullet_obj_pose)
+            # quat = tf.quaternion_from_matrix(new_pybullet_pose) # w x y z
+            # p.resetBasePositionAndOrientation(pybullet_obj_i, new_pybullet_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
+
             # input('after sampling.')
 
             if ((transformed_pcd[:,1] < workspace.region_low[1]).sum()>0) or (((transformed_pcd[:,1] > workspace.region_high[1]).sum()>0)):
@@ -331,22 +365,27 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
 
             if not valid:
                 continue
-            prev_joint_vals = robot.joint_vals
-            robot.set_joints(dof_joint_vals)
 
-            # for each of the suction gripper transform, check whether ik is reachable and without collision
-            collision = False
-            for comp_name, comp_id in workspace.component_id_dict.items():
-                contacts = p.getClosestPoints(robot.robot_id, comp_id, distance=0.,physicsClientId=robot.pybullet_id)
-                if len(contacts):
-                    collision = True
-                    break
-            # input('current robot pose')
-            robot.set_joints(prev_joint_vals)
 
-            quat = tf.quaternion_from_matrix(pybullet_obj_pose) # w x y z
-            p.resetBasePositionAndOrientation(pybullet_obj_i, pybullet_obj_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
+            # prev_joint_vals = robot.joint_vals
+            # robot.set_joints(dof_joint_vals)
+
+            # # for each of the suction gripper transform, check whether ik is reachable and without collision
+            # collision = False
+            # for comp_name, comp_id in workspace.component_id_dict.items():
+            #     contacts = p.getClosestPoints(robot.robot_id, comp_id, distance=0.,physicsClientId=robot.pybullet_id)
+            #     if len(contacts):
+            #         collision = True
+            #         break
+            # # input('current robot pose')
+            # robot.set_joints(prev_joint_vals)
+
+
+            # quat = tf.quaternion_from_matrix(pybullet_obj_pose) # w x y z
+            # p.resetBasePositionAndOrientation(pybullet_obj_i, pybullet_obj_pose[:3,3], [quat[1],quat[2],quat[3],quat[0]], physicsClientId=robot.pybullet_id)
             # input('after resetting.')
+
+
             break
         camera_extrinsics = camera.info['extrinsics']
         camera_intrinsics = camera.info['intrinsics']
@@ -358,7 +397,6 @@ def sample_sense_pose(obj_i, pybullet_obj_i, pybullet_obj_pose, objects,
             max_transformed_tip = transformed_tip
             max_dof_joint_vals = dof_joint_vals
             max_start_suction_joint = start_suction_joint
-
 
     sense_pose = max_net_transform
     del transformed_pcd

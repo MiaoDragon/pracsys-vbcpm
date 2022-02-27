@@ -24,7 +24,6 @@ def obj_pose_collision(obj_id, obj, transform, occlusion, occluded_label, occupi
         ws_ul = ws_uls[comp_name]
         valid_filter = (pcd_in_ws >= ws_ll) & (pcd_in_ws <= ws_ul)
         if (~valid_filter).sum() > 0:
-            print('colliding with workspace, name: ', comp_name)
 
             # draw the scene
             voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occluded_label>0, [0,0,0])
@@ -47,13 +46,11 @@ def obj_pose_collision(obj_id, obj, transform, occlusion, occluded_label, occupi
     pcd_in_occ_ind = pcd_in_occ_ind[valid_filter]
     extracted_occupied = occupied_label[pcd_in_occ_ind[:,0], pcd_in_occ_ind[:,1], pcd_in_occ_ind[:,2]]
     if ((extracted_occupied>0) & (extracted_occupied!=obj_id+1)).sum() >0:
-        print('colliding with other objects')
         return True
 
     # * check collision with occlusion
     extracted_occluded = occluded_label[pcd_in_occ_ind[:,0], pcd_in_occ_ind[:,1], pcd_in_occ_ind[:,2]]
     if ((extracted_occluded>0) & (extracted_occluded!=obj_id+1)).sum() >0:
-        print('collding with occluded space')
         return True
     return False
 
@@ -78,13 +75,11 @@ def obj_pose_collision_with_obj(obj_id, obj, transform, occlusion, occluded_labe
     pcd_in_occ_ind = pcd_in_occ_ind[valid_filter]
     extracted_occupied = occupied_label[pcd_in_occ_ind[:,0], pcd_in_occ_ind[:,1], pcd_in_occ_ind[:,2]]
     if ((extracted_occupied>0) & (extracted_occupied!=obj_id+1)).sum() >0:
-        print('colliding with other objects')
         return True
 
     # * check collision with occlusion
     extracted_occluded = occluded_label[pcd_in_occ_ind[:,0], pcd_in_occ_ind[:,1], pcd_in_occ_ind[:,2]]
     if ((extracted_occluded>0) & (extracted_occluded!=obj_id+1)).sum() >0:
-        print('collding with occluded space')
         return True
     return False
 

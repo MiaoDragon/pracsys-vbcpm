@@ -482,9 +482,6 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
     num_move_objs = np.sum(obj_included_list)
 
     while len(searched_objs) < num_move_objs:
-        print('searched objs: ')
-        print(searched_objs)
-        print('num_move_objs: ', num_move_objs)
         valid = False
         for i in range(search_start, len(total_objs)):
             if i in searched_objs_set:
@@ -561,8 +558,6 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
     relative_tip_pose = np.eye(4)
     relative_tip_pose[:3,3] = np.array([-0.05,0,0.0]) # retreat by 0.05
 
-    print('len(searched_trajs): ', len(searched_trajs))
-    print('len(searched_trajs[-1]): ', len(searched_trajs[-1]))
     start_joint_dict = searched_trajs[-1][-1]
     tip_suction_pose = robot.get_tip_link_pose(start_joint_dict)
     rest_traj_1 = motion_planner.straight_line_motion(searched_trajs[-1][-1], tip_suction_pose, relative_tip_pose, robot, workspace=workspace)   
@@ -730,6 +725,7 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
 
 
     if mp_map[transformed_pcd[:,0], transformed_pcd[:,1], transformed_pcd[:,2]].sum() > 0:
+        print('start in collision')
         return [], []
     start_transformed_pcd = transformed_pcd
 
@@ -748,16 +744,18 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
     # vis_pcd = visualize_pcd(transformed_pcd, [1,0,0])
     # o3d.visualization.draw_geometries([voxel, vis_pcd, start_vis_pcd])
 
+
     if mp_map[transformed_pcd[:,0], transformed_pcd[:,1], transformed_pcd[:,2]].sum() > 0:
+        print('goal in collision')
         return [], []
     goal_transformed_pcd = transformed_pcd
 
 
     # * after making sure collision does not happen at start and goal, create a threshold filter
 
-    mp_map = mask_pcd_xy_with_padding(mp_map, start_transformed_pcd, padding=4)
+    mp_map = mask_pcd_xy_with_padding(mp_map, start_transformed_pcd, padding=1)
 
-    mp_map = mask_pcd_xy_with_padding(mp_map, goal_transformed_pcd, padding=4)
+    mp_map = mask_pcd_xy_with_padding(mp_map, goal_transformed_pcd, padding=1)
 
 
     # * obtain IK for start and goal since we have a new collision map
@@ -791,10 +789,14 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         transfer_traj = motion_planner.suction_plan(previous_joint_dict, suction_pose, start_joint_vals[i], robot, workspace=workspace, display=False)
         # transfer_traj = motion_planner.joint_dict_motion_plan(previous_joint_dict, start_joint_dict, robot)
         if len(transfer_traj) == 0:
-            print('transfer trajectory is empty...')
             continue
         motion_planner.clear_octomap()
         motion_planner.set_collision_env_with_filter(occlusion, mp_map)
+        # rospy.sleep(1.0)
+
+        # v_voxel = visualize_voxel(x_map, y_map, z_map, mp_map, [1,0,0])
+        # o3d.visualization.draw_geometries([v_voxel])
+    
 
         # lift up to avoid collision with bottom
         relative_tip_pose = np.eye(4)
@@ -808,7 +810,6 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
 
         lift_traj = motion_planner.straight_line_motion(start_joint_dict, suction_pose, relative_tip_pose, robot, workspace=workspace)        
         if len(lift_traj) == 0:
-            print('lifting trajectory is empty...')
             continue
 
         relative_tip_pose = np.eye(4)
@@ -816,7 +817,6 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
         tip_suction_pose = obj_pose.dot(tip_poses_in_obj[i])
         drop_traj = motion_planner.straight_line_motion(target_joint_dict, tip_suction_pose, relative_tip_pose, robot, workspace=workspace)   
         if len(drop_traj) == 0:
-            print('dropping trajectory is empty...')
             continue
         drop_traj = drop_traj[::-1]
         joint_vals = robot.joint_dict_to_vals(drop_traj[0])
@@ -1189,7 +1189,6 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
         if i_iter <= int(0.9 * n_iter):
             obj_included_list = [1 for i in range(len(objs))] + [0 for i in range(len(moveable_objs))]
         else:
-            print('iteration > 0.9*n_iter')
             obj_included_list = [1 for i in range(len(objs))] + [1 for i in range(len(moveable_objs))]
 
         total_obj_poses = initialize_poses(total_obj_pcd_2ds, obj_included_list, robot_collision_grid, grid_resol, total_obj_start_thetas)
@@ -1247,7 +1246,9 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                 plt.scatter(pcd[:,0], pcd[:,1], c='g')
                 pcd = total_obj_poses[i][:2,:2].dot(total_obj_pcd_2ds[i].T).T + total_obj_poses[i][:2,2]
                 plt.scatter(pcd[:,0], pcd[:,1], c='r')
-            plt.pause(0.0001)
+
+            # plt.pause(0.0001)
+
             # input('next...')
 
             # validate obj poses  
@@ -1380,7 +1381,6 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                 #         ik_valid = False
                 #         break                
                 if not ik_valid:
-                    print('ik not valid... try another initialization')
                     break
                 
                 del robot_collision_grid
@@ -1391,7 +1391,6 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                 del total_obj_pcd_2ds
                 del total_objs
                 del pcd
-                print('IK is valid and sampled goal is found. exiting sample_goal...')
                 return obj_included_list, total_obj_poses, total_start_valid_pts, total_start_valid_poses_in_obj, \
                     total_start_valid_joints, total_valid_pts, total_valid_poses_in_obj, total_valid_joints
             if np.abs(forces).sum() == 0:
