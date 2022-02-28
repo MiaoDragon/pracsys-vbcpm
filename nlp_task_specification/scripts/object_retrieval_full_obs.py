@@ -209,7 +209,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         rgbaColor=color
                     )
                 bid = p.createMultiBody(
-                    baseMass=0.1,
+                    baseMass=0.05,
                     baseCollisionShapeIndex=cid,
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
@@ -355,8 +355,8 @@ for obj in obj_ids:
         obj,
         -1,
         lateralFriction=100.0,
-        spinningFriction=100.0,
-        rollingFriction=100.0,
+        # spinningFriction=10.0,
+        # rollingFriction=10.0,
     )
     # print("Dynamics:", p.getDynamicsInfo(obj, -1))
 
@@ -421,6 +421,22 @@ perception_sub = rospy.Subscriber(
 )
 time.sleep(2)
 
+
+def sample_pose(obj):
+    workspace_low = workspace.region_low
+    workspace_high = workspace.region_high
+    mins, maxs = p.getAABB(obj)
+    x_size = maxs[0] - mins[0]
+    y_size = maxs[1] - mins[1]
+    x = np.random.uniform(
+        low=workspace_low[0] + x_size / 2, high=workspace_high[0] - x_size / 2
+    )
+    y = np.random.uniform(
+        low=workspace_low[1] + y_size / 2, high=workspace_high[1] - y_size / 2
+    )
+    return x, y
+
+
 print(obj_ids)
 pose_ind = input("Please Enter Pose Index: ")
 while pose_ind != 'q':
@@ -465,16 +481,22 @@ while pose_ind != 'q':
         if res is not True:
             continue
         ### place object ###
-        pos, rot = p.getBasePositionAndOrientation(obj_id)
-        res = planner.place(
-            object_name,
-            [0.6, 0.3, 1.15],
-            # [0.6, 0.3, 1.15] + list(rot),
-            v_scale=0.50,
-            a_scale=1.0,
-            grasping_group=chirality + "_hand",
-            group_name=chirality + "_arm",
-        )
+        res = False
+        while res is not True:
+            # pos, rot = p.getBasePositionAndOrientation(obj_id)
+            xyposes = []
+            for i in range(20):
+                xyposes.append(sample_pose(obj_id))
+            # print(xyposes)
+            res = planner.place(
+                object_name,
+                xyposes,
+                # [0.6, 0.3],
+                v_scale=0.50,
+                a_scale=1.0,
+                grasping_group=chirality + "_hand",
+                group_name=chirality + "_arm",
+            )
         break
 
     pose_ind = input("Please Enter Pose Index: ")

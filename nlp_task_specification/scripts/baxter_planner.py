@@ -272,11 +272,16 @@ class BaxterPlanner(Planner):
         # plan preplacement
         displacement = [pre_disp_dist * x for x in pre_disp_dir]
         # poses = self.grasps.get_simple_placements(obj_name, partial_pose, displacement)
-        epose = move_group.get_current_pose().pose
-        epose.position.x = partial_pose[0]
-        epose.position.y = partial_pose[1]
-        epose.position.z = partial_pose[2]
-        poses = [copy.deepcopy(epose)]
+        poses = []
+        for pose in partial_pose:
+            epose = move_group.get_current_pose().pose
+            epose.position.x = pose[0] - displacement[0]
+            epose.position.y = pose[1] - displacement[1]
+            epose.position.z -= displacement[2]  #* 1.5
+            # epose.position.z = partial_pose[2]
+            poses.append(copy.deepcopy(epose))
+            # print(epose.position)
+        # poses = [copy.deepcopy(epose)]
 
         success, raw_plan, planning_time, error_code = self.plan_ee_poses(
             poses, group_name=group_name
@@ -358,3 +363,4 @@ class BaxterPlanner(Planner):
         move_group.execute(plan, wait=True)
         move_group.stop()
         print("Displaced", obj_name, ".")
+        return True
