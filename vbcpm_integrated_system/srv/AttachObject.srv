@@ -1,0 +1,4 @@
+# attach the object that is closest to the suction cup (in front of it)
+bool attach
+---
+bool success
