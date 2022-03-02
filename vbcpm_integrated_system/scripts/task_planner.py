@@ -15,6 +15,15 @@ import matplotlib.pyplot as plt
 import time
 import gc
 import cv2
+import rospy
+
+from sensor_msgs.msg import Image, JointState
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from vbcpm_integrated_system.srv import ExecuteTrajectory, AttachObject
+
+from message_filters import ApproximateTimeSynchronizer, Subscriber
+from cv_bridge import CvBridge
+
 class TaskPlanner():
     def __init__(self, scene_name):
         self.planning_system = PlanningSystem(scene_name)
@@ -41,29 +50,21 @@ class TaskPlanner():
 
         perception_pipeline = PerceptionSystem(occlusion_params, object_params, target_params)
 
-
-        perception_pipeline.pipeline_sim(self.planning_system.camera, 
-                                        [self.planning_system.robot.robot_id], 
-                                        self.planning_system.workspace.component_ids)
-
-        occluded = perception_pipeline.filtered_occluded
-        
-        # occluded = occlusion.scene_occlusion(depth_img, None, camera.info['extrinsics'], camera.info['intrinsics'])
-
-        occluded_dict = perception_pipeline.filtered_occluded_dict
-        occlusion_label  = perception_pipeline.filtered_occlusion_label
-        occupied_label = perception_pipeline.occupied_label_t
-        occupied_dict = perception_pipeline.occupied_dict_t
-
-        self.prev_occluded = occluded
-        self.prev_occupied_label = occupied_label
-        self.prev_occlusion_label = occlusion_label
-        self.prev_occluded_dict = occluded_dict
-        self.prev_occupied_dict = occupied_dict
-
         self.perception = perception_pipeline
         self.robot = self.planning_system.robot
         self.workspace = self.planning_system.workspace
+        self.camera = self.planning_system.camera
+
+        # rgb_sub = Subscriber('rgb_image', Image)
+        # depth_sub = Subscriber('depth_image', Image)
+        # seg_sub = Subscriber('seg_image', Image)
+        # tss = ApproximateTimeSynchronizer([rgb_sub, depth_sub, seg_sub])
+        # tss.registerCallback()
+        self.bridge = CvBridge()
+        self.attached_obj = None
+
+        self.pipeline_sim()
+
 
     def transform_obj_from_pose_both(self, pose, obj_id):
         prev_obj_voxel_pose = self.perception.objects[obj_id].transform
@@ -73,29 +74,88 @@ class TaskPlanner():
 
     def execute_traj(self, joint_dict_list, duration=0.001):
         """
-        call execution_system to execute the trajectory        
+        call execution_system to execute the trajectory
+        if an object has been attached, update the object model transform at the end
         """
-        # given a joint_dict_list, set the robot joint values at those locations
-        for i in range(len(joint_dict_list)):
-            self.robot.set_joint_from_dict(joint_dict_list[i])
-            # time.sleep(duration)
-            # input("next point...")
 
-    def attach_obj(self):
+        # convert joint_dict_list to JointTrajectory
+        traj = JointTrajectory()
+        traj.joint_names = list(joint_dict_list[0].keys())
+        points = []
+        for i in range(len(joint_dict_list)):
+            point = JointTrajectoryPoint()
+            positions = []
+            for name in traj.joint_names:
+                if name in joint_dict_list[i]:
+                    positions.append(joint_dict_list[i][name])
+                else:
+                    positions.append(joint_dict_list[i-1][name])
+                    joint_dict_list[i][name] = joint_dict_list[i-1][name]
+            point.positions = positions
+            # point.time_from_start = i * 
+            points.append(point)
+        traj.points = points
+
+        rospy.wait_for_service('execute_trajectory')
+        try:
+            execute_trajectory = rospy.ServiceProxy('execute_trajectory', ExecuteTrajectory)
+            resp1 = execute_trajectory(traj)
+            # update object pose using the last joint angle if an object is attached
+            if self.attached_obj is not None:
+                start_pose = self.robot.get_tip_link_pose(joint_dict_list[0])
+                end_pose = self.robot.get_tip_link_pose(joint_dict_list[-1])
+                rel_transform = end_pose.dot(np.linalg.inv(start_pose))
+                self.perception.objects[self.attached_obj].update_transform_from_relative(rel_transform)
+            # update the planning scene
+            for i in range(len(joint_dict_list)):
+                self.robot.set_joint_from_dict(joint_dict_list[i])
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+
+
+    def attach_obj(self, obj_id):
         """
         call execution_system to attach the object
         """
-        pass
+        rospy.wait_for_service('attach_object')
+        try:
+            attach_object = rospy.ServiceProxy('attach_object', AttachObject)
+            resp1 = attach_object(True, self.perception.data_assoc.obj_ids_reverse[obj_id])
+            self.attached_obj = obj_id
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
 
     def detach_obj(self):
         """
         call execution_system to detach the object
         """
-        pass
-            
+        rospy.wait_for_service('attach_object')
+        try:
+            attach_object = rospy.ServiceProxy('attach_object', AttachObject)
+            resp1 = attach_object(False, -1)
+            self.attached_obj = None
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+
+    def get_image(self):
+        print('waiting for message...')
+        color_img = rospy.wait_for_message('rgb_image', Image)
+        depth_img = rospy.wait_for_message('depth_image', Image)
+        seg_img = rospy.wait_for_message('seg_image', Image)
+
+
+        color_img = self.bridge.imgmsg_to_cv2(color_img, 'passthrough')
+        depth_img = self.bridge.imgmsg_to_cv2(depth_img, 'passthrough')
+        seg_img = self.bridge.imgmsg_to_cv2(seg_img, 'passthrough')
+
+
+        return color_img, depth_img, seg_img
+
     def pipeline_sim(self):
         # sense & perceive
-        self.perception.pipeline_sim(self.camera, [self.robot.robot_id], self.workspace.component_ids)
+        color_img, depth_img, seg_img = self.get_image()
+        self.perception.pipeline_sim(color_img, depth_img, seg_img, self.camera, 
+                                    [self.robot.robot_id], self.workspace.component_ids)
 
         # update data
         self.prev_occluded = self.perception.filtered_occluded
@@ -103,6 +163,12 @@ class TaskPlanner():
         self.prev_occupied_label = self.perception.occupied_label_t
         self.prev_occluded_dict = self.perception.filtered_occluded_dict
         self.prev_occupied_dict = self.perception.occupied_dict_t
+
+    def sense_object(self, obj_id, camera, robot_ids, component_ids):
+        color_img, depth_img, seg_img = self.get_image()
+        self.perception.sense_object(obj_id, color_img, depth_img, seg_img, 
+                                    self.camera, [self.robot.robot_id], self.workspace.component_ids)
+
 
     def mask_pcd_with_padding(self, occ_filter, pcd_indices, padding=1):
         """
@@ -198,7 +264,7 @@ class TaskPlanner():
                 del pcd
 
 
-        self.motion_planner.set_collision_env(self.perception.occlusion, 
+        self.planning_system.motion_planner.set_collision_env(self.perception.occlusion, 
                                             occlusion_filter, occupied_filter)
         del occlusion_filter
         del occupied_filter
@@ -246,7 +312,7 @@ class TaskPlanner():
         self.planning_system.motion_planner.clear_octomap()
 
         start_time = time.time()
-        _, suction_poses_in_obj, suction_joints = self.planning_system.pre_move(move_obj_idx, moved_objects)
+        _, suction_poses_in_obj, suction_joints = self.pre_move(move_obj_idx, moved_objects)
         end_time = time.time()
         print('pre_move takes time: ', end_time - start_time)
 
@@ -318,7 +384,7 @@ class TaskPlanner():
                 continue
 
             self.execute_traj(pick_joint_dict_list, duration=0.3)
-            self.attach_obj()
+            self.attach_obj(move_obj_idx)
             self.execute_traj(lift_joint_dict_list + retreat_joint_dict_list)
 
             start_time = time.time()
@@ -354,7 +420,7 @@ class TaskPlanner():
                 self.execute_traj(obj_sense_joint_dict_list)
                 
                 start_time = time.time()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
                 end_time = time.time()
                 print('sense_object takes time: ', end_time - start_time)
 
@@ -385,23 +451,22 @@ class TaskPlanner():
                 traj1 = self.generate_rot_traj(last_joint_dict, waypoint1)
                 self.execute_traj(traj1)
                 # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
 
 
                 traj2 = self.generate_rot_traj(traj1[-1], waypoint2)
                 self.execute_traj(traj2)
                 # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
 
                 traj3 = self.generate_rot_traj(traj2[-1], waypoint3)
                 self.execute_traj(traj3)
                 # self.pipeline_sim()
-                self.perception.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
+                self.sense_object(move_obj_idx, self.camera, [self.robot.robot_id], self.workspace.component_ids)
 
 
                 traj4 = self.generate_rot_traj(traj3[-1], current_angle)
                 self.execute_traj(traj4)
-
 
                 self.perception.objects[move_obj_idx].set_sensed()
                 # self.pipeline_sim()
@@ -415,7 +480,7 @@ class TaskPlanner():
             planning_info['intermediate_joint_dict_list'] = retreat_joint_dict_list
             planning_info['lift_up_joint_dict_list'] = lift_joint_dict_list
             planning_info['suction_joint_dict_list'] = pick_joint_dict_list
-
+            planning_info['obj'] = self.perception.objects[move_obj_idx]
 
             start_time = time.time()
 
@@ -429,10 +494,10 @@ class TaskPlanner():
             # occlusion_filter[self.prev_occluded_dict[move_obj_idx]] = 0
             occlusion_filter[self.prev_occupied_dict[move_obj_idx]] = 0
 
-            self.motion_planner.set_collision_env(self.perception.slam_system.occlusion, 
-                                                occlusion_filter, (self.prev_occupied_label>0)&(self.prev_occupied_label!=move_obj_idx+1))
+            self.planning_system.motion_planner.set_collision_env(self.perception.occlusion, 
+                                                                occlusion_filter, (self.prev_occupied_label>0)&(self.prev_occupied_label!=move_obj_idx+1))
 
-            placement_joint_dict_list, reset_joint_dict_list = self.plan_to_placement_pose(**planning_info)
+            placement_joint_dict_list, reset_joint_dict_list = self.planning_system.plan_to_placement_pose(**planning_info)
             del planning_info
             end_time = time.time()
             print('plan_to_placement_pose takes time: ', end_time - start_time)
@@ -789,7 +854,7 @@ class TaskPlanner():
                                             self.perception.occlusion.transform, 
                                             self.perception.occlusion.resol,
                                             self.robot, self.workspace, self.perception.occlusion,
-                                            self.motion_planner)
+                                            self.planning_system.motion_planner)
         success = False
         if searched_objs is not None:
             total_obj_ids = obj_ids + moveable_obj_ids
@@ -797,7 +862,7 @@ class TaskPlanner():
             for i in range(len(searched_objs)):
                 move_obj_idx = total_obj_ids[searched_objs[i]]
                 self.execute_traj(transfer_trajs[i], duration=0.3)
-                self.attach_obj()
+                self.attach_obj(move_obj_idx)
                 self.execute_traj(searched_trajs[i])
                 self.detach_obj()
             # reset
@@ -859,3 +924,17 @@ class TaskPlanner():
                 valid_objects.pop(0)
                 valid_objects.append(move_obj_idx)
             self.pipeline_sim()
+
+
+
+def main():
+    rospy.init_node("task_planner")
+    rospy.sleep(1.0)
+    scene_name = 'scene1'
+
+    task_planner = TaskPlanner(scene_name)
+    input('ENTER to start planning...')
+    task_planner.run_pipeline()
+
+if __name__ == "__main__":
+    main()

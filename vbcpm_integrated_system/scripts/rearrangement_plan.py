@@ -343,6 +343,7 @@ def rearrangement_plan(objs, obj_pcds, obj_start_poses, moveable_objs, moveable_
                         n_iter=25):
     # 3d voxel to 2d grid
     # TODO: debug
+    print('rearranging...')
     collision_grid = collision_voxel.sum(axis=2)>0
     # in the z-axis, if there is at least one voxel occupied, then collision grid
     grid_resol = voxel_resol[:2]
@@ -820,7 +821,7 @@ def find_trajectory_mp(obj_i, obj, obj_pcd, obj_start_pose, obj_start_pose_in_vo
             continue
         drop_traj = drop_traj[::-1]
         joint_vals = robot.joint_dict_to_vals(drop_traj[0])
-        traj = motion_planner.suction_with_obj_plan(lift_traj[-1], tip_poses_in_obj[i], joint_vals, robot, 0, [obj])
+        traj = motion_planner.suction_with_obj_plan(lift_traj[-1], tip_poses_in_obj[i], joint_vals, robot, obj)
         # input('after planning... planning is success? %d' % (len(traj)>0))
         if len(transfer_traj) > 0 and len(lift_traj) > 0 and len(traj) > 0 and len(drop_traj) > 0:
             break
@@ -1247,7 +1248,7 @@ def sample_goal_locations(objs, obj_pcds, start_obj_poses, zs, zs_in_world,
                 pcd = total_obj_poses[i][:2,:2].dot(total_obj_pcd_2ds[i].T).T + total_obj_poses[i][:2,2]
                 plt.scatter(pcd[:,0], pcd[:,1], c='r')
 
-            # plt.pause(0.0001)
+            plt.pause(0.0001)
 
             # input('next...')
 

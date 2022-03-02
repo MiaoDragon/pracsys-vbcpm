@@ -2,6 +2,7 @@ import numpy as np
 import pybullet as p
 import transformations as tf
 import time
+
 class Camera():
     def __init__(self):
         # TODO: parameterize the camera position
@@ -129,5 +130,7 @@ class Camera():
         depth_img = far * near / (far-(far-near)*depth_img)
         depth_img[depth_img>=far] = 0.
         depth_img[depth_img<=near]=0.
+
+
 
         return rgb_img, depth_img, seg_img

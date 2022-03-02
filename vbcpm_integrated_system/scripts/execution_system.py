@@ -14,12 +14,19 @@ PyBullet:
   or load a previously generated problem instance
 - load robot, and objects in the scene. Generate a scene graph to represent the problem
 """
+import object_retrieval_prob_generation as prob_gen
+from visual_utilities import *
+from vbcpm_integrated_system.srv import AttachObject, ExecuteTrajectory, \
+                                    AttachObjectResponse, ExecuteTrajectoryResponse
 
 import rospy
-import object_retrieval_prob_generation as prob_gen
 from sensor_msgs.msg import Image, JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from cv_bridge import CvBridge
+import transformations as tf
+import pickle
+import json
+import sys
 
 class ExecutionSystem():
     def __init__(self, load=None, scene_name='scene1'):
@@ -75,17 +82,14 @@ class ExecutionSystem():
         self.target_obj_shape = target_obj_shape
         self.target_obj_size = target_obj_size
 
+        self.total_obj_ids = self.obj_ids + [self.target_obj_id]
         self.bridge = CvBridge()
 
         self.attached_obj_id = None
         # * initialize ROS services
         # - robot trajectory tracker
-        rospy.Service("execute_trajectory", vbcpm_integrated_system.srv.ExecuteTrajectory, 
-                      self.execute_trajectory)
-        rospy.Service("attach_object", vbcpm_integrated_system.srv.AttachObject,
-                      self.attach_object)
-
-
+        rospy.Service("execute_trajectory", ExecuteTrajectory, self.execute_trajectory)
+        rospy.Service("attach_object", AttachObject, self.attach_object)
 
         # * initialize ROS pubs and subs
         # - camera
@@ -94,6 +98,8 @@ class ExecutionSystem():
         self.depth_cam_pub = rospy.Publisher('depth_image', Image)
         self.seg_cam_pub = rospy.Publisher('seg_image', Image)
         self.rs_pub = rospy.Publisher('robot_state_publisher', JointState)
+
+        construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
 
     def execute_trajectory(self, req):
         """
@@ -131,26 +137,34 @@ class ExecutionSystem():
                 transform = new_transform
                 obj_transform = new_obj_transform
             
+            # rospy.sleep(0.03)
+        return ExecuteTrajectoryResponse(True)
 
-    def attach_object(self):
+    def attach_object(self, req):
         """
         attach the object closest to the robot
         """
-        min_dist = 100.0
-        min_i = -1
-        for i in range(len(self.obj_ids)):
-            points = p.getClosestPoints(self.robot.pybullet_id, self.obj_ids[i], 0.03)
-            if len(points) == 0:
-                continue
-            for j in range(len(points)):
-                if points[j][8] < min_dist:
-                    min_dist = points[j][8]
-                    min_i = i
-        if min_i != -1:
-            self.attached_obj_id = min_i
+        if req.attach == True:
+            # min_dist = 100.0
+            # min_i = -1
+            # for i in range(len(self.total_obj_ids)):
+            #     points = p.getClosestPoints(self.robot.pybullet_id, self.total_obj_ids[i], 0.03)
+            #     if len(points) == 0:
+            #         continue
+            #     for j in range(len(points)):
+            #         if points[j][8] < min_dist:
+            #             min_dist = points[j][8]
+            #             min_i = self.total_obj_ids[i]
+            # if min_i != -1:
+            #     self.attached_obj_id = min_i
+            # else:
+            #     print('attach_object cannot find a cloest point')
+            #     raise RuntimeError
+            self.attached_obj_id = req.obj_id
         else:
-            print('attach_object cannot find a cloest point')
-            raise RuntimeError
+            self.attached_obj_id = None
+
+        return AttachObjectResponse(True)
 
     def publish_image(self):
         """
@@ -171,7 +185,7 @@ class ExecutionSystem():
         obtain joint state from PyBullet and publish
         """
         msg = JointState()
-        for name, val in self.robot.joint_dict:
+        for name, val in self.robot.joint_dict.items():
             msg.name.append(name)
             msg.position.append(val)
         self.rs_pub.publish(msg)
@@ -188,89 +202,19 @@ class ExecutionSystem():
 
 
 
-import json
-import random
-import numpy as np
-import rospkg
-import pybullet as p
-from workspace import Workspace
-from robot import Robot
-import os
-import time
-from camera import Camera
-
-import open3d as o3d
-from perception_pipeline import PerceptionPipeline
-
-import transformations as tf
-
-from visual_utilities import *
-from object_retrieval_partial_obs_prob_generation import load_problem, random_one_problem
-from pipeline_baseline import PipelineBaseline
-from prob_planner import ProbPlanner
-from motion_planner import MotionPlanner
-
-import sys
-import pickle
-
-
-
 def main():
+    rospy.init_node("execution_system")
+    rospy.sleep(1.0)
+    scene_name = 'scene1'
+
     if int(sys.argv[1]) > 0:
-        print('argv: ', sys.argv)
-        # load previously generated object
-        f = open('saved_problem.pkl', 'rb')
-        data = pickle.load(f)
-        f.close()
-        scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size = data
-        data = load_problem(scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, 
-                            target_pose, target_pcd, target_obj_shape, target_obj_size)
-        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, target_pose, target_pcd, target_obj_id = data
-        f = open(scene_f, 'r')
-        scene_dict = json.load(f)        
-        
-        print('loaded')
+        load = True
+        load = input("enter the problem name for loading: ").strip()
+        load = load + '.pkl'
     else:
-        scene_f = 'scene1.json'
-        data = random_one_problem(scene=scene_f, level=1, num_objs=7, num_hiding_objs=1)
-        pid, scene_f, robot, workspace, camera, obj_poses, obj_pcds, obj_ids, obj_shapes, obj_sizes, \
-            target_pose, target_pcd, target_obj_id, target_obj_shape, target_obj_size = data
-        data = (scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, target_pose, target_pcd, target_obj_shape, target_obj_size)
-        save = input('save current scene? 0 - no, 1 - yes...')
-        f = open(scene_f, 'r')
-        scene_dict = json.load(f)
-        f.close()
-        if int(save) == 1:
-            f = open('saved_problem.pkl', 'wb')
-            pickle.dump(data, f)
-            f.close()
-            print('saved')
-
-    problem_def = {}
-    problem_def['pid'] = pid
-    problem_def['scene_dict'] = scene_dict
-    problem_def['robot'] = robot
-    problem_def['workspace'] = workspace
-    problem_def['camera'] = camera
-    problem_def['obj_pcds'] = obj_pcds
-    problem_def['obj_ids'] = obj_ids
-    problem_def['target_obj_pcd'] = target_pcd
-    problem_def['target_obj_id'] = target_obj_id
-    problem_def['obj_poses'] = obj_poses
-    problem_def['target_obj_pose']= target_pose
-    motion_planner = MotionPlanner(robot, workspace)
-    problem_def['motion_planner'] = motion_planner
-    
-    construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
-    # input('after constrcuting occlusion graph')
-
-    robot.set_motion_planner(motion_planner)
-
-    pipeline = PipelineBaseline(problem_def)
-
-    # pipeline.solve(ProbPlanner())
-    pipeline.run_pipeline(10)    
+        load = None
+    execution_system = ExecutionSystem(load, scene_name)
+    execution_system.run()
 
 if __name__ == "__main__":
     main()
-

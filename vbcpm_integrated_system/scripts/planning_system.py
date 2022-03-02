@@ -13,6 +13,8 @@ import json
 import os
 import numpy as np
 import copy
+import gc
+
 class PlanningSystem():
     def __init__(self, scene_name):
         """
@@ -69,6 +71,8 @@ class PlanningSystem():
         self.workspace = workspace
         self.camera = camera
         self.motion_planner = motion_planner
+
+        self.robot.set_motion_planner(motion_planner)
     
     def plan_to_suction_pose(self, obj, suction_pose_in_obj, suction_joint, start_joint_dict):
         # self.motion_planner = motion_planner.MotionPlanner(self.robot, self.workspace)
@@ -129,7 +133,7 @@ class PlanningSystem():
 
         return joint_dict_list
 
-    def plan_to_placement_pose(self, tip_pose_in_obj, 
+    def plan_to_placement_pose(self, obj, tip_pose_in_obj, 
                                 intermediate_joint, intermediate_joint_dict_list, 
                                 lift_up_joint_dict_list, suction_joint_dict_list):
         # ** loop until the object is put back
@@ -142,8 +146,6 @@ class PlanningSystem():
                 # input('valid pose is not found...')
                 # * step 1: plan a path to go to the intermediate pose
                 # obtain the start tip transform
-                # tip_start_pose = self.perception.slam_system.objects[move_obj_idx].transform.dot(tip_pose_in_obj)
-                # target_object_pose = intermediate_obj_pose
 
                 # do a motion planning to current sense pose
 

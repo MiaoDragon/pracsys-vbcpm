@@ -39,8 +39,6 @@ class MotionPlanner():
     def __init__(self, robot, workspace, commander_args=[]):
         # set up the scene
         moveit_commander.roscpp_initialize(commander_args)
-        rospy.init_node("motion_planner")
-        rospy.sleep(1.0)
         self.robot_commander = moveit_commander.RobotCommander()
         self.group_arm_name = "left_arm"
         self.move_group = moveit_commander.MoveGroupCommander(self.group_arm_name)

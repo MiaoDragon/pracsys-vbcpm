@@ -11,12 +11,17 @@ from segmentation import GroundTruthSegmentation
 import numpy as np
 import gc
 
+from visual_utilities import *
+
+import cv2
+
 LOG = 0
 
 class PerceptionSystem():
-    def __init__(self, occlusion_params, object_params):
+    def __init__(self, occlusion_params, object_params, target_params):
         occlusion = Occlusion(**occlusion_params)
         self.object_params = object_params  # resol and scale
+        self.target_params = target_params  # for recognizing target object
         self.occlusion = occlusion
         self.objects = {}
         self.obj_initial_poses = {}  # useful to backpropagate
@@ -57,6 +62,7 @@ class PerceptionSystem():
             if len(obj_hide_set) == 0:
                 valid_objects.append(obj_id)
 
+
         for obj_id in sensed_obj_ids:
             # UPDATE: the background needs to be set with depth value FAR
             seg_depth_img = np.array(depth_img)
@@ -92,6 +98,7 @@ class PerceptionSystem():
             # cv2.waitKey(0)
 
             occluded = self.occlusion.scene_occlusion(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
+
 
             if (not (obj_id in self.objects)) or ((not self.objects[obj_id].active) and (not obj_id in valid_objects)):
                 # compute bounding box for the conservative region
@@ -324,11 +331,13 @@ class PerceptionSystem():
 
 
 
-    def pipeline_sim(self, camera, robot_ids, workspace_ids):
+    def pipeline_sim(self, color_img, depth_img, seg_img, camera, robot_ids, workspace_ids):
         """
         given the camera input, segment the image, and data association
         """    
-        color_img, depth_img, seg_img = camera.sense()
+        # color_img, depth_img, seg_img = camera.sense()
+
+        # visualzie segmentation image
 
         self.segmentation.set_ground_truth_seg_img(seg_img)
         seg_img = self.segmentation.segment_img(color_img, depth_img)
@@ -340,7 +349,8 @@ class PerceptionSystem():
         self.color_img = color_img
         # self.target_seg_img = target_seg_img
 
-        assoc, seg_img = self.data_assoc.data_association(seg_img, robot_ids, workspace_ids)
+        assoc, seg_img, sensed_obj_ids = self.data_assoc.data_association(seg_img, robot_ids, workspace_ids)
+        # sensed_obj_ids: currently seen objects in the scene
         """
         in reality the association can change in time, but the object
         label shouldn't change. So we should only remember the result
@@ -356,9 +366,8 @@ class PerceptionSystem():
         object_hide_set = self.obtain_object_hide_set(robot_ids, workspace_ids)
 
         self.current_hide_set = object_hide_set
-
         self.perceive(depth_img, color_img, seg_img, 
-                    list(self.data_assoc.obj_ids_reverse.keys()), object_hide_set, 
+                    sensed_obj_ids, object_hide_set, 
                     camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], 
                     robot_ids, workspace_ids)
 
@@ -370,13 +379,12 @@ class PerceptionSystem():
         for obj_id in valid_objects:
             self.objects[obj_id].set_active()
 
-    def sense_object(self, obj_id, camera, robot_ids, workspace_ids):
-        color_img, depth_img, seg_img = camera.sense()
+    def sense_object(self, obj_id, color_img, depth_img, seg_img, camera, robot_ids, workspace_ids):
         self.segmentation.set_ground_truth_seg_img(seg_img)
         seg_img = self.segmentation.segment_img(color_img, depth_img)
-        assoc, seg_img = self.data_assoc.data_association(seg_img, robot_ids, workspace_ids)
+        assoc, seg_img, sensed_obj_ids = self.data_assoc.data_association(seg_img, robot_ids, workspace_ids)
         
-        self.update_obj_model(obj_id, depth_img, color_img, seg_img, list(self.data_assoc.obj_ids_reverse.keys()), 
+        self.update_obj_model(obj_id, depth_img, color_img, seg_img, sensed_obj_ids, 
                                           camera.info['extrinsics'], camera.info['intrinsics'], camera.info['far'], robot_ids, workspace_ids)
     
 
