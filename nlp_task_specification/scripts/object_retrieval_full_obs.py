@@ -23,6 +23,8 @@ from numpy.core.fromnumeric import size
 import rospy
 import rospkg
 import pybullet as p
+
+import cv2
 import open3d as o3d
 
 import cam_utilities
@@ -350,11 +352,130 @@ if not real:
             obj_poses[obj_i - 1] = None
     print(hidden_objs)
 
+### Debug Visualization ###
+dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
+# dg.draw_graph()
+if True:
+    vox_occupied = []
+    vox_occluded = []
+    vox_revealed = []
+    vox_ups = []
+    for i in range(len(obj_poses)):
+        obj_i = i + 1
+        voxel1 = visualize_voxel(
+            occlusion.voxel_x,
+            occlusion.voxel_y,
+            occlusion.voxel_z,
+            occupied_label == obj_i,
+            obj_colors[i],
+        )
+        vox_occupied.append(voxel1)
+        voxel2 = visualize_voxel(
+            occlusion.voxel_x,
+            occlusion.voxel_y,
+            occlusion.voxel_z,
+            occlusion_label == obj_i,
+            obj_colors[i],
+        )
+        vox_occluded.append(voxel2)
+        voxel3 = visualize_voxel(
+            occlusion.voxel_x,
+            occlusion.voxel_y,
+            occlusion.voxel_z,
+            occupied_label == obj_i,
+            [0, 0, 0],
+        )
+        if not real:
+            vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
+        voxel4 = visualize_voxel(
+            occlusion.voxel_x,
+            occlusion.voxel_y,
+            occlusion.voxel_z,
+            dg.upmasks[i],
+            obj_colors[i],
+        )
+        vox_ups.append(voxel4)
+        # o3d.visualization.draw_geometries([voxel1, voxel2])
+
+    # o3d.visualization.draw_geometries(vox_occupied)
+    # o3d.visualization.draw_geometries(
+    #     [
+    #         visualize_voxel(
+    #             occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
+    #             occlusion_label == -1, [0, 0, 0]
+    #         )
+    #     ]
+    # )
+    # o3d.visualization.draw_geometries(vox_occluded)
+    # if not real:
+    #     o3d.visualization.draw_geometries(vox_revealed)
+    # o3d.visualization.draw_geometries(vox_ups)
+    for i in range(len(obj_poses)):
+        obj_i = i + 1
+        # obj_x = occlusion.voxel_x[occupied_label == obj_i].astype(int)
+        # obj_y = occlusion.voxel_y[occupied_label == obj_i].astype(int)
+        # obj_z = occlusion.voxel_z[occupied_label == obj_i].astype(int)
+
+        # print(obj_z)
+        # obj_x = obj_x[obj_z == 0]
+        # obj_y = obj_y[obj_z == 0]
+        # # obj_z = obj_z[obj_z == 0]
+        # print(obj_x, obj_y)
+        obj_x, obj_y = np.where((occupied_label == obj_i).any(2))
+        obj_x -= min(obj_x)
+        obj_y -= min(obj_y)
+        # print(obj_x, obj_y)
+        shape = (max(obj_x) + 1, max(obj_y) + 1)
+        kernel = np.zeros([shape[0], shape[1]]).astype('uint8')
+        kernel[obj_x, obj_y] = 1
+        print(f"Obj{obj_i}:")
+        print(kernel[:, :])
+
+    # free_x = occlusion.voxel_x[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
+    # free_y = occlusion.voxel_y[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
+    # free_z = occlusion.voxel_z[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
+    # free_x = free_x[free_z == 0]
+    # free_y = free_y[free_z == 0]
+    # free_z = free_z[free_z == 0]
+
+    free_x, free_y = np.where(((occlusion_label <= 0) & (occupied_label == 0)).all(2))
+    # print(free_z)
+    free_z = np.zeros(len(free_x))
+
+    shape = occlusion.occlusion.shape
+    # print(shape)
+    img = np.zeros([shape[0], shape[1]]).astype('uint8')
+    img[:, :] = 255
+    img[free_x, free_y] = 0
+    # print(img[:, :])
+    cv2.imshow("Test0", img)
+    cv2.waitKey(0)
+    # print(img.shape)
+    img = cv2.filter2D(img, -1, kernel=np.ones((5, 5)))
+    # print(img.shape)
+    cv2.imshow("Test1", img)
+    cv2.waitKey(0)
+    mink_x, mink_y = np.where(img == 0)
+    # print(free_x, free_y, len(free_x), len(free_y))
+    # print(mink_x, mink_y, len(mink_x), len(mink_y))
+    o3d.visualization.draw_geometries(
+        [visualize_voxel(
+            free_x,
+            free_y,
+            free_z,
+            True,
+            [0, 0, 0],
+        )]
+    )
+    cv2.destroyAllWindows()
+
+### Debug Visualization End ###
+
 for obj in obj_ids:
     p.changeDynamics(
         obj,
         -1,
-        lateralFriction=100.0,
+        lateralFriction=10.0,
         # spinningFriction=10.0,
         # rollingFriction=10.0,
     )
@@ -437,6 +558,37 @@ def sample_pose(obj):
     return x, y
 
 
+def free_space_grid(obj_i):
+    ws_low = workspace.region_low
+    ws_high = workspace.region_high
+
+    obj_x, obj_y = np.where((occupied_label == obj_i).any(2))
+    obj_x -= min(obj_x)
+    obj_y -= min(obj_y)
+    kernel = np.zeros((max(obj_x) + 1, max(obj_y) + 1)).astype('uint8')
+    kernel[obj_x, obj_y] = 1
+    print(f"Obj{obj_i}:")
+    print(kernel[:, :])
+
+    free_x, free_y = np.where(((occlusion_label <= 0) & (occupied_label == 0)).all(2))
+    shape = occlusion.occlusion.shape
+    img = 255 * np.ones(shape[0:2]).astype('uint8')
+    img[free_x, free_y] = 0
+    cv2.imshow("Test0", img)
+    fimg = cv2.filter2D(img, -1, kernel)
+    cv2.imshow("Test1", fimg)
+    cv2.waitKey(0)
+    mink_x, mink_y = np.where(img == 0)
+    samples = np.column_stack(
+        (
+            mink_x * occlusion.resol[0] + ws_low[0],
+            mink_y * occlusion.resol[1] + ws_low[1]
+        )
+    )
+    cv2.destroyAllWindows()
+    return samples
+
+
 print(obj_ids)
 pose_ind = input("Please Enter Pose Index: ")
 while pose_ind != 'q':
@@ -484,9 +636,14 @@ while pose_ind != 'q':
         res = False
         while res is not True:
             # pos, rot = p.getBasePositionAndOrientation(obj_id)
-            xyposes = []
-            for i in range(20):
-                xyposes.append(sample_pose(obj_id))
+            # xyposes = []
+            # for i in range(20):
+            #     xyposes.append(sample_pose(obj_id))
+            for pose in free_space_grid(obj_i):
+                print(pose, workspace.region_low, workspace.region_high)
+                print(workspace.region_low[0] <= pose[0] <= workspace.region_high[0])
+                print(workspace.region_low[1] <= pose[1] <= workspace.region_high[1])
+            xyposes = random.sample(free_space_grid(obj_i).tolist(), 20)
             # print(xyposes)
             res = planner.place(
                 object_name,
@@ -502,65 +659,6 @@ while pose_ind != 'q':
     pose_ind = input("Please Enter Pose Index: ")
 ### Pick End ###
 
-dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
-
-# visualize occupied voxel grid
-vox_occupied = []
-vox_occluded = []
-vox_revealed = []
-vox_ups = []
-for i in range(len(obj_poses)):
-    obj_i = i + 1
-    voxel1 = visualize_voxel(
-        occlusion.voxel_x,
-        occlusion.voxel_y,
-        occlusion.voxel_z,
-        occupied_label == obj_i,
-        obj_colors[i],
-    )
-    vox_occupied.append(voxel1)
-    voxel2 = visualize_voxel(
-        occlusion.voxel_x,
-        occlusion.voxel_y,
-        occlusion.voxel_z,
-        occlusion_label == obj_i,
-        obj_colors[i],
-    )
-    vox_occluded.append(voxel2)
-    voxel3 = visualize_voxel(
-        occlusion.voxel_x,
-        occlusion.voxel_y,
-        occlusion.voxel_z,
-        occupied_label == obj_i,
-        [0, 0, 0],
-    )
-    if not real:
-        vox_revealed.append(voxel3 if obj_i in hidden_objs else voxel1)
-    voxel4 = visualize_voxel(
-        occlusion.voxel_x,
-        occlusion.voxel_y,
-        occlusion.voxel_z,
-        dg.upmasks[i],
-        obj_colors[i],
-    )
-    vox_ups.append(voxel4)
-    # o3d.visualization.draw_geometries([voxel1, voxel2])
-
-o3d.visualization.draw_geometries(vox_occupied)
-# o3d.visualization.draw_geometries(
-#     [
-#         visualize_voxel(
-#             occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z,
-#             occlusion_label == -1, [0, 0, 0]
-#         )
-#     ]
-# )
-# o3d.visualization.draw_geometries(vox_occluded)
-if not real:
-    o3d.visualization.draw_geometries(vox_revealed)
-# o3d.visualization.draw_geometries(vox_ups)
-
-dg.draw_graph()
 suggestion = int(input("Suggest region"))
 result = dg.update_target_confidence(1, suggestion, 1000)
 while not result:
