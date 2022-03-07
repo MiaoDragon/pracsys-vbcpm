@@ -1,0 +1,5 @@
+# input: trajectory
+trajectory_msgs/JointTrajectory trajectory
+---
+# output: success or not
+bool success
