@@ -34,7 +34,7 @@ class BaxterPlanner(Planner):
             self.robot = None
             self.rate = rospy.Rate(rate)
 
-        def execute(self, plan_msg, wait=True):
+        def execute(self, plan_msg, wait=False):
             super().execute(plan_msg, wait)
             joint_names = plan_msg.joint_trajectory.joint_names
             indices = [self.robot.joint_name2ind[x] for x in joint_names]
@@ -250,7 +250,7 @@ class BaxterPlanner(Planner):
         obj_name,
         partial_pose,
         constraints=None,
-        pre_disp_dir=(0, 0, -1),
+        pre_disp_dir=(0, 0, 1),
         pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.1,
@@ -274,11 +274,13 @@ class BaxterPlanner(Planner):
         # poses = self.grasps.get_simple_placements(obj_name, partial_pose, displacement)
         poses = []
         for pose in partial_pose:
+            # print(pose)
             epose = move_group.get_current_pose().pose
             epose.position.x = pose[0] - displacement[0]
             epose.position.y = pose[1] - displacement[1]
-            epose.position.z -= displacement[2]  #* 1.5
-            # epose.position.z = partial_pose[2]
+            # epose.position.z -= displacement[2]  #* 1.5
+            # epose.position.z = pose[2] - displacement[2]
+            epose.position.z -= pose[2] - displacement[2]
             poses.append(copy.deepcopy(epose))
             # print(epose.position)
         # poses = [copy.deepcopy(epose)]
@@ -305,9 +307,9 @@ class BaxterPlanner(Planner):
         # slide to placement
         scale = pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
         wpose = move_group.get_current_pose().pose
-        wpose.position.x += scale * pre_disp_dir[0]
-        wpose.position.y += scale * pre_disp_dir[1]
-        wpose.position.z += scale * pre_disp_dir[2]
+        wpose.position.x += scale * pre_disp_dir[0] * -1
+        wpose.position.y += scale * pre_disp_dir[1] * -1
+        wpose.position.z += scale * pre_disp_dir[2] * -1
         waypoints = [copy.deepcopy(wpose)]
         raw_plan, fraction = move_group.compute_cartesian_path(
             waypoints, eef_step, jump_threshold, avoid_collisions=False

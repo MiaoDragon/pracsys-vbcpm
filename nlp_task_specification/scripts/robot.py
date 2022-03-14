@@ -50,6 +50,10 @@ class Robot():
         )
         print(self.joint_names)
 
+        self.set_gripper('left', 'open', reset=True)
+        self.set_gripper('right', 'open', reset=True)
+        self.nuetral_joints = self.get_joints()
+
     def set_joints(self, joints):
         for i in range(self.num_joints):
             p.resetJointState(
@@ -60,6 +64,7 @@ class Robot():
         return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
 
     def set_gripper(self, gripper, state='open', reset=False):
+        MAX_FORCE = 5
         ind = 0 if state == 'close' else 1
         if gripper == 'left' or gripper == self.left_gripper_id:
             if reset:
@@ -83,7 +88,7 @@ class Robot():
                     jointIndices=self.left_fingers,
                     controlMode=p.POSITION_CONTROL,
                     targetPositions=[self.left_flim[ind], -self.left_flim[ind]],
-                    forces=[100] * 2,
+                    forces=[MAX_FORCE] * 2,
                     physicsClientId=self.pybullet_id
                 )
         elif gripper == 'right' or gripper == self.right_gripper_id:
@@ -108,7 +113,7 @@ class Robot():
                     jointIndices=self.right_fingers,
                     controlMode=p.POSITION_CONTROL,
                     targetPositions=[self.right_flim[ind], -self.right_flim[ind]],
-                    forces=[100] * 2,
+                    forces=[MAX_FORCE] * 2,
                     physicsClientId=self.pybullet_id
                 )
 
@@ -128,9 +133,9 @@ class Robot():
 
         lowerLimits, upperLimits, jointRanges, restPoses = [], [], [], []
 
-        numJoints = p.getNumJoints(self.robot_id, physicsClientId=self.pybullet_id)
+        # numJoints = p.getNumJoints(self.robot_id, physicsClientId=self.pybullet_id)
 
-        for i in range(numJoints):
+        for i in range(self.num_joints):
             jointInfo = p.getJointInfo(self.robot_id, i, physicsClientId=self.pybullet_id)
 
             if includeFixed or jointInfo[3] > -1:
@@ -194,7 +199,7 @@ class Robot():
         dist2 = 1e30
         # niter = 0
 
-        numJoints = p.getNumJoints(self.robot_id, physicsClientId=self.pybullet_id)
+        # numJoints = p.getNumJoints(self.robot_id, physicsClientId=self.pybullet_id)
 
         # while (not inthresh and niter < maxIter):
         jointPoses = p.calculateInverseKinematics(
@@ -211,7 +216,7 @@ class Robot():
             physicsClientId=self.pybullet_id
         )
 
-        for i in range(numJoints):
+        for i in range(self.num_joints):
             jointInfo = p.getJointInfo(self.robot_id, i, physicsClientId=self.pybullet_id)
             qIndex = jointInfo[3]
             if qIndex > -1:
@@ -285,6 +290,7 @@ class Robot():
 
         # object position and orientation
         obj_pos, obj_rot = p.getBasePositionAndOrientation(object_id, self.pybullet_id)
+        obj_pos_in, obj_rot = p.invertTransform(obj_pos, obj_rot)
         gw = self.right_flim[1] * 2  # gripper width
 
         # positions along shape
@@ -364,7 +370,8 @@ class Robot():
         for pose1, pose2 in grasps:
             pos1, rot1 = pose1
             pos2, rot2 = pose2
-            self.set_joints(init_states)
+            # self.set_joints(init_states)
+            self.set_joints(self.nuetral_joints)
             jointPoses, dist = self.accurateIK(
                 endEffectorId,
                 pos1,

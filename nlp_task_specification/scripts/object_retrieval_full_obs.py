@@ -211,7 +211,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         rgbaColor=color
                     )
                 bid = p.createMultiBody(
-                    baseMass=0.05,
+                    baseMass=0.01,
                     baseCollisionShapeIndex=cid,
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
@@ -290,68 +290,76 @@ pid, scene_dict, robot, workspace, camera, occlusion, obj_poses, obj_pcds, obj_i
 )
 
 true_obj_poses = obj_poses.copy()
-
-width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
-    width=camera.info['img_size'],
-    height=camera.info['img_size'],
-    viewMatrix=camera.info['view_mat'],
-    projectionMatrix=camera.info['proj_mat']
-)
-
-depth_img = depth_img / camera.info['factor']
-far = camera.info['far']
-near = camera.info['near']
-depth_img = far * near / (far - (far - near) * depth_img)
-depth_img[depth_img >= far] = 0.
-depth_img[depth_img <= near] = 0.
-
-# simulated sensing
 real = False
-if real:
-    obj_ind = list(range(1, len(obj_poses) + 1))
-    rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
-        obj_pcds[1:],
-        obj_pcds[0],
-        obj_ind[1:],
-        obj_ind[0],
+
+
+def sense():
+    global obj_poses, obj_pcds
+    global occluded, occlusion_label, occupied_label, occluded_list, hidden_objs
+
+    width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
+        width=camera.info['img_size'],
+        height=camera.info['img_size'],
+        viewMatrix=camera.info['view_mat'],
+        projectionMatrix=camera.info['proj_mat']
     )
 
-occluded = occlusion.scene_occlusion(
-    depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics']
-)
-occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
-    occluded,
-    camera.info['extrinsics'],
-    camera.info['intrinsics'],
-    obj_poses,
-    obj_pcds,
-    depth_nn=1
-)
-# intersected, shadow_occupancy = occlusion.shadow_occupancy_single_obj(occlusion_label > 0, None, None, target_pcd)
+    depth_img = depth_img / camera.info['factor']
+    far = camera.info['far']
+    near = camera.info['near']
+    depth_img = far * near / (far - (far - near) * depth_img)
+    depth_img[depth_img >= far] = 0.
+    depth_img[depth_img <= near] = 0.
 
-# fake perception
-if not real:
-    hidden_objs = set()
-    for i in range(len(obj_poses)):
-        obj_i = i + 1
-        obj_i_vox = occupied_label == obj_i
-        obj_i_vol = obj_i_vox.sum()
-        obj_i_occ_vol = 0
-        for j in range(len(obj_poses)):
-            # if i == j:
-            #     continue
-            obj_j = j + 1
-            occ_j_vox = (
-                occlusion_label == obj_j
-            )  #| (occupied_label == -1)  #| (occupied_label == obj_j)
+    # simulated sensing
+    if real:
+        obj_ind = list(range(1, len(obj_poses) + 1))
+        rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
+            obj_pcds[1:],
+            obj_pcds[0],
+            obj_ind[1:],
+            obj_ind[0],
+        )
 
-            obj_i_occ_vol += (obj_i_vox & occ_j_vox).sum()
-        # print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
-        if obj_i_occ_vol / obj_i_vol > 0.9:
-            hidden_objs.add(obj_i)
-            obj_poses[obj_i - 1] = None
-    print(hidden_objs)
+    occluded = occlusion.scene_occlusion(
+        depth_img, rgb_img, camera.info['extrinsics'], camera.info['intrinsics']
+    )
+    occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
+        occluded,
+        camera.info['extrinsics'],
+        camera.info['intrinsics'],
+        obj_poses,
+        obj_pcds,
+        depth_nn=1
+    )
 
+    # intersected, shadow_occupancy = occlusion.shadow_occupancy_single_obj(occlusion_label > 0, None, None, target_pcd)
+
+    # fake perception
+    if not real:
+        hidden_objs = set()
+        for i in range(len(obj_poses)):
+            obj_i = i + 1
+            obj_i_vox = occupied_label == obj_i
+            obj_i_vol = obj_i_vox.sum()
+            obj_i_occ_vol = 0
+            for j in range(len(obj_poses)):
+                # if i == j:
+                #     continue
+                obj_j = j + 1
+                occ_j_vox = (
+                    occlusion_label == obj_j
+                )  #| (occupied_label == -1)  #| (occupied_label == obj_j)
+
+                obj_i_occ_vol += (obj_i_vox & occ_j_vox).sum()
+            # print(obj_i, obj_i_occ_vol, obj_i_occ_vol / obj_i_vol)
+            if obj_i_occ_vol / obj_i_vol > 0.9:
+                hidden_objs.add(obj_i)
+                obj_poses[obj_i - 1] = None
+        print(hidden_objs)
+
+
+sense()
 ### Debug Visualization ###
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
 # dg.draw_graph()
@@ -448,13 +456,13 @@ if True:
     img[:, :] = 255
     img[free_x, free_y] = 0
     # print(img[:, :])
-    cv2.imshow("Test0", img)
-    cv2.waitKey(0)
+    # cv2.imshow("Test0", img)
+    # cv2.waitKey(0)
     # print(img.shape)
     img = cv2.filter2D(img, -1, kernel=np.ones((5, 5)))
     # print(img.shape)
-    cv2.imshow("Test1", img)
-    cv2.waitKey(0)
+    # cv2.imshow("Test1", img)
+    # cv2.waitKey(0)
     mink_x, mink_y = np.where(img == 0)
     # print(free_x, free_y, len(free_x), len(free_y))
     # print(mink_x, mink_y, len(mink_x), len(mink_y))
@@ -467,7 +475,7 @@ if True:
             [0, 0, 0],
         )]
     )
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
 
 ### Debug Visualization End ###
 
@@ -475,14 +483,14 @@ for obj in obj_ids:
     p.changeDynamics(
         obj,
         -1,
-        lateralFriction=10.0,
-        # spinningFriction=10.0,
-        # rollingFriction=10.0,
+        lateralFriction=100.0,
+        spinningFriction=0.1,
+        rollingFriction=0.0000001,
     )
     # print("Dynamics:", p.getDynamicsInfo(obj, -1))
 
-robot.set_gripper('left', 'open', reset=True)
-robot.set_gripper('right', 'open', reset=True)
+# robot.set_gripper('left', 'open', reset=True)
+# robot.set_gripper('right', 'open', reset=True)
 p.setGravity(0, 0, -9.81)
 # p.setRealTimeSimulation(1)
 # pybullet_scene_pub = PybulletScenePublisher(pid)
@@ -562,6 +570,13 @@ def free_space_grid(obj_i):
     ws_low = workspace.region_low
     ws_high = workspace.region_high
 
+    # get z coord for object placement
+    obj_id = obj_ids[obj_i - 1]
+    mins, maxs = p.getAABB(obj_id)
+    # z = (maxs[2] - mins[2]) / 2 + ws_low[2] + 0.005
+    z = mins[2] - ws_low[2] - 0.005
+
+    # find better kernel generation
     obj_x, obj_y = np.where((occupied_label == obj_i).any(2))
     obj_x -= min(obj_x)
     obj_y -= min(obj_y)
@@ -574,18 +589,20 @@ def free_space_grid(obj_i):
     shape = occlusion.occlusion.shape
     img = 255 * np.ones(shape[0:2]).astype('uint8')
     img[free_x, free_y] = 0
-    cv2.imshow("Test0", img)
+    # cv2.imshow("Test0", img)
+    # cv2.waitKey(0)
     fimg = cv2.filter2D(img, -1, kernel)
-    cv2.imshow("Test1", fimg)
-    cv2.waitKey(0)
+    # cv2.imshow("Test1", fimg)
+    # cv2.waitKey(0)
     mink_x, mink_y = np.where(img == 0)
-    samples = np.column_stack(
-        (
+    samples = list(
+        zip(
             mink_x * occlusion.resol[0] + ws_low[0],
-            mink_y * occlusion.resol[1] + ws_low[1]
+            mink_y * occlusion.resol[1] + ws_low[1],
+            [z] * len(mink_x),
         )
     )
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
     return samples
 
 
@@ -618,6 +635,8 @@ while pose_ind != 'q':
         if len(eof_poses) == 0:
             print("No valid grasps of", object_name, "for", chirality, "arm!")
             continue
+
+        sense()
         ### pick object ###
         res = planner.pick(
             object_name,
@@ -639,15 +658,16 @@ while pose_ind != 'q':
             # xyposes = []
             # for i in range(20):
             #     xyposes.append(sample_pose(obj_id))
-            for pose in free_space_grid(obj_i):
-                print(pose, workspace.region_low, workspace.region_high)
-                print(workspace.region_low[0] <= pose[0] <= workspace.region_high[0])
-                print(workspace.region_low[1] <= pose[1] <= workspace.region_high[1])
-            xyposes = random.sample(free_space_grid(obj_i).tolist(), 20)
+            # for pose in free_space_grid(obj_i):
+            #     print(pose, workspace.region_low, workspace.region_high)
+            #     print(workspace.region_low[0] <= pose[0] <= workspace.region_high[0])
+            #     print(workspace.region_low[1] <= pose[1] <= workspace.region_high[1])
+            res_grid = free_space_grid(obj_i)
+            xyzposes = random.sample(res_grid, min(10, len(res_grid)))
             # print(xyposes)
             res = planner.place(
                 object_name,
-                xyposes,
+                xyzposes,
                 # [0.6, 0.3],
                 v_scale=0.50,
                 a_scale=1.0,
