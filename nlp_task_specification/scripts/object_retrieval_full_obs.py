@@ -130,11 +130,11 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
             if obj_shape == 'cube':
                 x_scales = np.arange(0.25, 0.40, 0.05) / 10
                 y_scales = np.arange(0.25, 0.40, 0.05) / 10
-                z_scales = np.arange(0.5, 1.0, 0.05) / 10
+                z_scales = np.arange(0.6, 1.0, 0.05) / 10
             elif obj_shape == 'ontop':
                 x_scales = np.arange(0.25, 0.40, 0.05) / 10
                 y_scales = np.arange(0.25, 0.40, 0.05) / 10
-                z_scales = np.arange(0.5, 1.0, 0.05) / 10
+                z_scales = np.arange(0.6, 1.0, 0.05) / 10
             elif obj_shape == 'cylinder':
                 x_scales = np.arange(0.25, 0.40, 0.05) / 10
                 y_scales = np.arange(0.25, 0.40, 0.05) / 10
@@ -216,6 +216,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
                     baseOrientation=[0, 0, 0, 1]
+                    # baseOrientation=[0, 0, 0.5, 0.5]
                 )
                 # check collision with scene
                 collision = False

@@ -290,7 +290,7 @@ class Robot():
 
         # object position and orientation
         obj_pos, obj_rot = p.getBasePositionAndOrientation(object_id, self.pybullet_id)
-        obj_pos_in, obj_rot = p.invertTransform(obj_pos, obj_rot)
+        # obj_pos_in, obj_rot_in = p.invertTransform(obj_pos, obj_rot)
         gw = self.right_flim[1] * 2  # gripper width
 
         # positions along shape
@@ -348,10 +348,21 @@ class Robot():
 
         poses = []
         for pos, rot in grasps:
-            tpos1, trot1 = p.multiplyTransforms((0, 0, 0), rot, offset1, obj_rot)
-            tpos2, trot2 = p.multiplyTransforms((0, 0, 0), rot, offset2, obj_rot)
-            pose1 = [tpos1 + np.add(obj_pos, pos), trot1]
-            pose2 = [tpos2 + np.add(obj_pos, pos), trot2]
+            # tpos1, trot1 = p.multiplyTransforms((0, 0, 0), rot, offset1, obj_rot)
+            # tpos2, trot2 = p.multiplyTransforms((0, 0, 0), rot, offset2, obj_rot)
+            # pose1 = [tpos1 + np.add(obj_pos, pos), trot1]
+            # pose2 = [tpos2 + np.add(obj_pos, pos), trot2]
+            pos_inv, rot_inv = p.invertTransform(pos, rot)
+            off1, roff1 = p.multiplyTransforms((0, 0, 0), rot, offset1, rot_inv)
+            off2, roff2 = p.multiplyTransforms((0, 0, 0), rot, offset2, rot_inv)
+            # print(off1, roff1)
+            pos1, rot1 = p.multiplyTransforms(off1, roff1, pos, rot)
+            pos2, rot2 = p.multiplyTransforms(off2, roff2, pos, rot)
+
+            tpos1, trot1 = p.multiplyTransforms(obj_pos, obj_rot, pos1, rot1)
+            tpos2, trot2 = p.multiplyTransforms(obj_pos, obj_rot, pos2, rot2)
+            pose1 = [tpos1, trot1]
+            pose2 = [tpos2, trot2]
             poses.append([pose1, pose2])
 
         return poses
@@ -380,7 +391,7 @@ class Robot():
             )
             # input(rot)
             if dist < filterThreshold:  # filter by succesful IK
-                self.set_gripper(endEffectorId, 'open')
+                self.set_gripper(endEffectorId, 'open', reset=True)
                 joint_states = [
                     x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))
                 ]
