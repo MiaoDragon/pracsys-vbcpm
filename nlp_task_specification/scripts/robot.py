@@ -64,8 +64,13 @@ class Robot():
         return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
 
     def set_gripper(self, gripper, state='open', reset=False):
-        MAX_FORCE = 5
+        # MAX_FORCE = 5
+        MAX_FORCE_OPEN = 100
+        MAX_FORCE_CLOSE = 0.2
+        MAX_FORCE_CLOSE = 0.16
         ind = 0 if state == 'close' else 1
+        MAX_FORCE = MAX_FORCE_CLOSE if state == 'close' else MAX_FORCE_OPEN
+        MAX_FORCE = 0.2
         if gripper == 'left' or gripper == self.left_gripper_id:
             if reset:
                 p.resetJointState(
@@ -87,6 +92,7 @@ class Robot():
                     bodyIndex=self.robot_id,
                     jointIndices=self.left_fingers,
                     controlMode=p.POSITION_CONTROL,
+                    # controlMode=p.TORQUE_CONTROL,
                     targetPositions=[self.left_flim[ind], -self.left_flim[ind]],
                     forces=[MAX_FORCE] * 2,
                     physicsClientId=self.pybullet_id
@@ -112,6 +118,7 @@ class Robot():
                     bodyIndex=self.robot_id,
                     jointIndices=self.right_fingers,
                     controlMode=p.POSITION_CONTROL,
+                    # controlMode=p.TORQUE_CONTROL,
                     targetPositions=[self.right_flim[ind], -self.right_flim[ind]],
                     forces=[MAX_FORCE] * 2,
                     physicsClientId=self.pybullet_id
@@ -306,7 +313,7 @@ class Robot():
             # right = [0, sy / 2, 0]
             # front = [-sx / 2, 0, 0]
             if sx < gw:
-                noz = nearOdd(sz / gw)
+                noz = nearOdd(sz / (gw * 2))
                 for z in np.linspace(-(noz - 1) / (2 * noz), (noz - 1) / (2 * noz), noz):
                     grasps.append([[0, sy / 2, z * sz], horz[3]])  # right
                     grasps.append([[0, sy / 2, z * sz], horz[9]])  # right

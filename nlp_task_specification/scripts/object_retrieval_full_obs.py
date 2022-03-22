@@ -84,6 +84,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
 
     n_samples = 12000
     if level == 1:
+        obj_list = ['ontop', 'ontop']
         obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
 
         pcd_cube = np.random.uniform(
@@ -211,7 +212,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
                         rgbaColor=color
                     )
                 bid = p.createMultiBody(
-                    baseMass=0.01,
+                    # baseMass=0.01,
+                    baseMass=0.0001,
                     baseCollisionShapeIndex=cid,
                     baseVisualShapeIndex=vid,
                     basePosition=[x, y, z],
@@ -295,8 +297,15 @@ real = False
 
 
 def sense():
-    global obj_poses, obj_pcds
-    global occluded, occlusion_label, occupied_label, occluded_list, hidden_objs
+    global obj_poses, obj_pcds, occluded, occlusion_label, occupied_label, occluded_list, hidden_objs
+
+    if not real:
+        for i, obj in enumerate(obj_ids):
+            pos, rot = p.getBasePositionAndOrientation(obj)
+            pose = np.zeros((4, 4))
+            pose[:3, :3] = np.reshape(p.getMatrixFromQuaternion(rot), (3, 3))
+            pose[:3, 3] = pos
+            obj_poses[i] = pose
 
     width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
         width=camera.info['img_size'],
@@ -359,11 +368,12 @@ def sense():
                 obj_poses[obj_i - 1] = None
         print(hidden_objs)
 
+    return DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
+
 
 sense()
 ### Debug Visualization ###
 dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
-# dg.draw_graph()
 if True:
     vox_occupied = []
     vox_occluded = []
@@ -440,6 +450,9 @@ if True:
         print(f"Obj{obj_i}:")
         print(kernel[:, :])
 
+
+def visualize_placements():
+    global occlusion, occlusion_label, occupied_label
     # free_x = occlusion.voxel_x[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
     # free_y = occlusion.voxel_y[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
     # free_z = occlusion.voxel_z[(occlusion_label <= 0) & (occupied_label == 0)].astype(int)
@@ -448,7 +461,7 @@ if True:
     # free_z = free_z[free_z == 0]
 
     free_x, free_y = np.where(((occlusion_label <= 0) & (occupied_label == 0)).all(2))
-    # print(free_z)
+    # print("Equal?:", free_x == free_x0, free_y == free_y0)
     free_z = np.zeros(len(free_x))
 
     shape = occlusion.occlusion.shape
@@ -457,8 +470,8 @@ if True:
     img[:, :] = 255
     img[free_x, free_y] = 0
     # print(img[:, :])
-    # cv2.imshow("Test0", img)
-    # cv2.waitKey(0)
+    cv2.imshow("Test0", img)
+    cv2.waitKey(0)
     # print(img.shape)
     img = cv2.filter2D(img, -1, kernel=np.ones((5, 5)))
     # print(img.shape)
@@ -467,26 +480,93 @@ if True:
     mink_x, mink_y = np.where(img == 0)
     # print(free_x, free_y, len(free_x), len(free_y))
     # print(mink_x, mink_y, len(mink_x), len(mink_y))
-    o3d.visualization.draw_geometries(
-        [visualize_voxel(
-            free_x,
-            free_y,
-            free_z,
-            True,
-            [0, 0, 0],
-        )]
-    )
-    # cv2.destroyAllWindows()
+    # o3d.visualization.draw_geometries(
+    #     [visualize_voxel(
+    #         free_x,
+    #         free_y,
+    #         free_z,
+    #         True,
+    #         [0, 0, 0],
+    #     )]
+    # )
+    cv2.destroyAllWindows()
+
 
 ### Debug Visualization End ###
 
+print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[0]))
+print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[1]))
+print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[0]))
+print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[1]))
+print("Dynamics:", p.getDynamicsInfo(0, robot.left_gripper_id))
+print("Dynamics:", p.getDynamicsInfo(0, robot.right_gripper_id))
+lfr = 10000000000.0
+sfr = 10000000.0
+rfr = 1000000.0
+lfg = 0
+sfg = 0.0000
+rfg = 0.0000
+lf = 1.0
+sf = 0.00001
+rf = 0.00001
+eemass = 0.0
+
+p.changeDynamics(
+    0,
+    robot.left_gripper_id,
+    mass=eemass,
+    lateralFriction=lfg,
+    spinningFriction=sfg,
+    rollingFriction=rfg,
+)
+p.changeDynamics(
+    0,
+    robot.right_gripper_id,
+    mass=eemass,
+    lateralFriction=lfg,
+    spinningFriction=sfg,
+    rollingFriction=rfg,
+)
+p.changeDynamics(
+    0,
+    robot.left_fingers[0],
+    mass=eemass,
+    lateralFriction=lfr,
+    spinningFriction=sfr,
+    rollingFriction=rfr,
+)
+p.changeDynamics(
+    0,
+    robot.left_fingers[1],
+    mass=eemass,
+    lateralFriction=lfr,
+    spinningFriction=sfr,
+    rollingFriction=rfr,
+)
+p.changeDynamics(
+    0,
+    robot.right_fingers[0],
+    mass=eemass,
+    lateralFriction=lfr,
+    spinningFriction=sfr,
+    rollingFriction=rfr,
+)
+p.changeDynamics(
+    0,
+    robot.right_fingers[1],
+    mass=eemass,
+    lateralFriction=lfr,
+    spinningFriction=sfr,
+    rollingFriction=rfr,
+)
+# print("Dynamics:", p.getDynamicsInfo(1, -1))
 for obj in obj_ids:
     p.changeDynamics(
         obj,
         -1,
-        lateralFriction=100.0,
-        spinningFriction=0.1,
-        rollingFriction=0.0000001,
+        lateralFriction=lf,
+        spinningFriction=sf,
+        rollingFriction=rf,
     )
     # print("Dynamics:", p.getDynamicsInfo(obj, -1))
 
@@ -608,8 +688,12 @@ def free_space_grid(obj_i):
 
 
 print(obj_ids)
-pose_ind = input("Please Enter Pose Index: ")
+pose_ind = input("Pleasjointe Enter Pose Index: ")
 while pose_ind != 'q':
+    if pose_ind == 'r':
+        planner.go_to_rest_pose()
+        pose_ind = input("Please Enter Pose Index: ")
+        continue
     try:
         obj_i = int(pose_ind[0])
     except IndexError:
@@ -638,6 +722,7 @@ while pose_ind != 'q':
             continue
 
         sense()
+        visualize_placements()
         ### pick object ###
         res = planner.pick(
             object_name,
@@ -651,10 +736,13 @@ while pose_ind != 'q':
         )
         print(res, type(res))
         if res is not True:
+            planner.go_to_rest_pose()
             continue
         ### place object ###
         res = False
-        while res is not True:
+        tries = 3
+        while res is not True and tries > 0:
+            tries -= 1
             # pos, rot = p.getBasePositionAndOrientation(obj_id)
             # xyposes = []
             # for i in range(20):
@@ -675,11 +763,15 @@ while pose_ind != 'q':
                 grasping_group=chirality + "_hand",
                 group_name=chirality + "_arm",
             )
+        if res is not True:
+            planner.go_to_rest_pose()
         break
 
     pose_ind = input("Please Enter Pose Index: ")
 ### Pick End ###
 
+dg = sense()
+dg.draw_graph()
 suggestion = int(input("Suggest region"))
 result = dg.update_target_confidence(1, suggestion, 1000)
 while not result:
@@ -689,5 +781,73 @@ while not result:
 print("Success!", dg.pick_order(result))
 dg.draw_graph()
 
-print('obj_poses length: ', len(obj_poses))
-print('occluded_list length: ', len(occluded_list))
+for obj_i in dg.pick_order(result)[:-1]:
+    obj_id = obj_ids[obj_i - 1]
+    object_name = f'Obj_{obj_id}'
+    for chirality in ('left', 'right'):
+
+        pre_disp_dist = 0.05
+        grip_offset = 0.01
+        t0 = time.time()
+        poses = robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
+        if chirality == 'left':
+            filteredPoses = robot.filterGrasps(robot.left_gripper_id, poses)
+        else:
+            filteredPoses = robot.filterGrasps(robot.right_gripper_id, poses)
+        t1 = time.time()
+        eof_poses = [
+            x['eof_pose_offset'] for x in filteredPoses if len(x['collisions']) == 0
+        ]
+        print("Filter Time: ", t1 - t0)
+
+        if len(eof_poses) == 0:
+            print("No valid grasps of", object_name, "for", chirality, "arm!")
+            continue
+
+        sense()
+        visualize_placements()
+        ### pick object ###
+        res = planner.pick(
+            object_name,
+            grasps=eof_poses,
+            grip_offset=grip_offset,
+            pre_disp_dist=pre_disp_dist,
+            v_scale=0.50,
+            a_scale=1.0,
+            grasping_group=chirality + "_hand",
+            group_name=chirality + "_arm",
+        )
+        print(res, type(res))
+        if res is not True:
+            planner.go_to_rest_pose()
+            continue
+        ### place object ###
+        res = False
+        tries = 3
+        while res is not True and tries > 0:
+            tries -= 1
+            # pos, rot = p.getBasePositionAndOrientation(obj_id)
+            # xyposes = []
+            # for i in range(20):
+            #     xyposes.append(sample_pose(obj_id))
+            # for pose in free_space_grid(obj_i):
+            #     print(pose, workspace.region_low, workspace.region_high)
+            #     print(workspace.region_low[0] <= pose[0] <= workspace.region_high[0])
+            #     print(workspace.region_low[1] <= pose[1] <= workspace.region_high[1])
+            res_grid = free_space_grid(obj_i)
+            xyzposes = random.sample(res_grid, min(10, len(res_grid)))
+            # print(xyposes)
+            res = planner.place(
+                object_name,
+                xyzposes,
+                # [0.6, 0.3],
+                v_scale=0.50,
+                a_scale=1.0,
+                grasping_group=chirality + "_hand",
+                group_name=chirality + "_arm",
+            )
+        if res is not True:
+            planner.go_to_rest_pose()
+        break
+dg = sense()
+dg.draw_graph()

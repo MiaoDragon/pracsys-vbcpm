@@ -48,7 +48,7 @@ class OcclusionScene():
 
     def scene_occlusion(self, depth_img, color_img, camera_extrinsics, camera_intrinsics):
         # generate the occlusion for the entire scene
-        # occlusion includes: object occupied space, occlusion due to known object, occlusion due to 
+        # occlusion includes: object occupied space, occlusion due to known object, occlusion due to
         #                     unknown object
         voxel_vecs = np.array([self.voxel_x, self.voxel_y, self.voxel_z]).transpose((1,2,3,0))
         # voxel_vecs = np.concatenate([self.voxel_x, self.voxel_y, self.voxel_z], axis=3)
@@ -108,7 +108,7 @@ class OcclusionScene():
         currently we're ignoring unknown occlusion (occluded by unknown entities) due to the noise
         of occlusion computation. In the future we should have a better computation and consider that.
         """
-        
+
         new_occlusion_label = np.zeros(occlusion_label2.shape).astype(int)
         new_occlusion_label[(occlusion_label2<0)&(occlusion_label1!=0)] = -1
         new_occluded_list = []
@@ -167,7 +167,7 @@ class OcclusionScene():
         max_i = transformed_pcd[:,1].max()+1
         depth_img = np.zeros((max_i, max_j)).astype(float)
         depth_img[transformed_pcd[:,1],transformed_pcd[:,0]] = depth
-        
+
         # depth_img = cv2.resize(depth_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
         # depth_img = cv2.resize(depth_img, ori_shape, interpolation=cv2.INTER_LINEAR)
         # depth_img = cv2.resize(depth_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
@@ -263,11 +263,14 @@ class OcclusionScene():
             depth = transformed_pcd[:,2]
             transformed_pcd = transformed_pcd[:,:2]
             transformed_pcd = np.floor(transformed_pcd).astype(int)
-            max_j = transformed_pcd[:,0].max()+1
-            max_i = transformed_pcd[:,1].max()+1
+            max_j = max(transformed_pcd[:,0].max()+1,1)
+            max_i = max(transformed_pcd[:,1].max()+1,1)
+            print(max_i,max_j)
             depth_img = np.zeros((max_i, max_j)).astype(float)
+            transformed_pcd[:, 0] = np.clip(transformed_pcd[:, 0], 0, max_i)
+            transformed_pcd[:, 1] = np.clip(transformed_pcd[:, 1], 0, max_j)
             depth_img[transformed_pcd[:,1],transformed_pcd[:,0]] = depth
-            
+
             ori_shape = depth_img.shape
             # depth_img = cv2.resize(depth_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
             # depth_img = cv2.resize(depth_img, ori_shape, interpolation=cv2.INTER_LINEAR)
@@ -331,7 +334,7 @@ class OcclusionScene():
                     intersected[i,j,k] = (val == obj_voxel_nonzero)
 
         shadow_occupancy = np.zeros(occluded.shape).astype(bool)
-        # minkowski sum                        
+        # minkowski sum
         for i in range(len(intersected)):
             for j in range(intersected.shape[1]):
                 for k in range(intersected.shape[2]):

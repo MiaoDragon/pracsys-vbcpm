@@ -59,8 +59,12 @@ class BaxterPlanner(Planner):
                         targetPositions=poss,
                         physicsClientId=self.robot.pybullet_id
                     )
-                    self.robot.set_gripper('left', state=self.gripper_left_cmd)
-                    self.robot.set_gripper('right', state=self.gripper_right_cmd)
+                    self.robot.set_gripper(
+                        'left', state=self.gripper_left_cmd, reset=False
+                    )
+                    self.robot.set_gripper(
+                        'right', state=self.gripper_right_cmd, reset=False
+                    )
                     # print(self.gripper_left_cmd)
                     # print(self.gripper_right_cmd)
                     p.stepSimulation()
@@ -78,9 +82,12 @@ class BaxterPlanner(Planner):
         self.move_group_left.robot = self.pb_robot
         self.move_group_right = self.MoveGroup('right_arm')
         self.move_group_right.robot = self.pb_robot
+        self.move_group_both = self.MoveGroup('both_arms')
+        self.move_group_both.robot = self.pb_robot
         self.name2group = {
             'left_arm': self.move_group_left,
-            'right_arm': self.move_group_right
+            'right_arm': self.move_group_right,
+            'both_arms': self.move_group_both
         }
 
         if not is_sim:
@@ -305,31 +312,32 @@ class BaxterPlanner(Planner):
         print("Preplaced.")
 
         # slide to placement
-        scale = pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
+        scale = 0.9 * pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
         wpose = move_group.get_current_pose().pose
         wpose.position.x += scale * pre_disp_dir[0] * -1
         wpose.position.y += scale * pre_disp_dir[1] * -1
         wpose.position.z += scale * pre_disp_dir[2] * -1
         waypoints = [copy.deepcopy(wpose)]
         raw_plan, fraction = move_group.compute_cartesian_path(
-            waypoints, eef_step, jump_threshold, avoid_collisions=False
+            waypoints, eef_step, jump_threshold, avoid_collisions=True
         )
         print(
             "Planned placement approach", fraction * pre_disp_dist, "for", obj_name, "."
         )
         if fraction < 0.5:
-            return -fraction
-
-        # retime and execute trajectory
-        plan = move_group.retime_trajectory(
-            self.robot.get_current_state(),
-            raw_plan,
-            velocity_scaling_factor=v_scale,
-            acceleration_scaling_factor=a_scale,
-        )
-        move_group.execute(plan, wait=True)
-        move_group.stop()
-        print("Approached placement for", obj_name, ".")
+            # return -fraction
+            print("Skipping Approach. Dropping Object instead!")
+        else:
+            # retime and execute trajectory
+            plan = move_group.retime_trajectory(
+                self.robot.get_current_state(),
+                raw_plan,
+                velocity_scaling_factor=v_scale,
+                acceleration_scaling_factor=a_scale,
+            )
+            move_group.execute(plan, wait=True)
+            move_group.stop()
+            print("Approached placement for", obj_name, ".")
 
         # open gripper
         self.do_end_effector('open', group_name=grasping_group)
@@ -366,3 +374,42 @@ class BaxterPlanner(Planner):
         move_group.stop()
         print("Displaced", obj_name, ".")
         return True
+
+    def go_to_rest_pose(
+        self,
+        constraints=None,
+        v_scale=0.25,
+        a_scale=1.0,
+        group_name="both_arms",
+    ):
+        move_group = self.name2group[group_name]
+        move_group.set_num_planning_attempts(25)
+        move_group.set_planning_time(10.0)
+        if constraints is not None:
+            self.move_group.set_path_constraints(constraints)
+        # move_group.set_support_surface_name(support)
+
+        # open gripper
+        self.do_end_effector('open', group_name='left_hand')
+        self.do_end_effector('open', group_name='right_hand')
+        move_group.detach_object()
+
+        # plan to pre goal poses
+        cur_joints = move_group.get_current_joint_values()
+        move_group.set_joint_value_target([0] * len(cur_joints))
+        success, raw_plan, planning_time, error_code = move_group.plan()
+        move_group.clear_pose_targets()
+        if not success:
+            return error_code
+        else:
+            print("Planned reset for", group_name, "in", planning_time, "seconds.")
+
+        # retime and execute trajectory
+        plan = move_group.retime_trajectory(
+            self.robot.get_current_state(),
+            raw_plan,
+            velocity_scaling_factor=v_scale,
+            acceleration_scaling_factor=a_scale,
+        )
+        move_group.execute(plan, wait=True)
+        move_group.stop()
