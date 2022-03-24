@@ -2,9 +2,11 @@ import sys
 import copy
 from math import pi, tau, dist, fabs, cos
 
+import numpy as np
+
 import rospy
-# import moveit_msgs.msg
-# import geometry_msgs.msg
+from geometry_msgs.msg import Quaternion
+from moveit_msgs.msg import OrientationConstraint, Constraints
 from baxter_core_msgs.msg import EndEffectorCommand
 
 import moveit_commander
@@ -31,6 +33,7 @@ class BaxterPlanner(Planner):
             super().__init__(name, robot_description, ns, wait_for_servers)
             self.gripper_left_cmd = 'open'
             self.gripper_right_cmd = 'open'
+            # self.force = 10
             self.robot = None
             self.rate = rospy.Rate(rate)
 
@@ -60,10 +63,16 @@ class BaxterPlanner(Planner):
                         physicsClientId=self.robot.pybullet_id
                     )
                     self.robot.set_gripper(
-                        'left', state=self.gripper_left_cmd, reset=False
+                        'left',
+                        state=self.gripper_left_cmd,
+                        reset=False,
+                        # force=self.force
                     )
                     self.robot.set_gripper(
-                        'right', state=self.gripper_right_cmd, reset=False
+                        'right',
+                        state=self.gripper_right_cmd,
+                        reset=False,
+                        # force=self.force
                     )
                     # print(self.gripper_left_cmd)
                     # print(self.gripper_right_cmd)
@@ -80,14 +89,25 @@ class BaxterPlanner(Planner):
         super().__init__(gripper_width, is_sim, commander_args)
         self.move_group_left = self.MoveGroup('left_arm')
         self.move_group_left.robot = self.pb_robot
+        # self.move_group_left.force = 0.015
         self.move_group_right = self.MoveGroup('right_arm')
         self.move_group_right.robot = self.pb_robot
+        # self.move_group_right.force = 0.015
         self.move_group_both = self.MoveGroup('both_arms')
         self.move_group_both.robot = self.pb_robot
+        # self.move_group_both.force = 0.015
+        self.move_group_left_hand = self.MoveGroup('left_hand')
+        self.move_group_left_hand.robot = self.pb_robot
+        # self.move_group_left_hand.force = 0.04
+        self.move_group_right_hand = self.MoveGroup('right_hand')
+        self.move_group_right_hand.robot = self.pb_robot
+        # self.move_group_right_hand.force = 0.04
         self.name2group = {
             'left_arm': self.move_group_left,
             'right_arm': self.move_group_right,
-            'both_arms': self.move_group_both
+            'both_arms': self.move_group_both,
+            'left_hand': self.move_group_left_hand,
+            'right_hand': self.move_group_right_hand,
         }
 
         if not is_sim:
@@ -102,23 +122,58 @@ class BaxterPlanner(Planner):
                 queue_size=5,
             )
 
+    @staticmethod
+    def gen_gripper_constraint(quat, gripper):
+        ocm = OrientationConstraint()
+        ocm.link_name = gripper
+        ocm.header.frame_id = "base"
+        # if type(quat) in (list, tuple, np.ndarray):
+        #     ocm.orientation.x = quat[0]
+        #     ocm.orientation.y = quat[1]
+        #     ocm.orientation.z = quat[2]
+        #     ocm.orientation.w = quat[3]
+        # elif type(quat) is Quaternion:
+        #     ocm.orientation = quat
+        # else:
+        #     ocm.orientation.w = 1.0
+        ocm.orientation.w = 1.0
+        ocm.absolute_x_axis_tolerance = 0.05
+        ocm.absolute_y_axis_tolerance = 0.05
+        ocm.absolute_z_axis_tolerance = 0.05
+        ocm.weight = 1.0
+        return ocm
+
     def do_end_effector(self, command, group_name="left_hand"):
         if self.is_sim:
             if group_name == "left_hand":
                 self.move_group_left.gripper_left_cmd = command
                 self.move_group_right.gripper_left_cmd = command
+                self.move_group_left_hand.gripper_left_cmd = command
+                self.move_group_right_hand.gripper_left_cmd = command
             if group_name == "right_hand":
                 self.move_group_left.gripper_right_cmd = command
                 self.move_group_right.gripper_right_cmd = command
+                self.move_group_left_hand.gripper_right_cmd = command
+                self.move_group_right_hand.gripper_right_cmd = command
 
             # make sim look nice
-            move_group = moveit_commander.MoveGroupCommander(group_name)
+            # move_group = moveit_commander.MoveGroupCommander(group_name)
+            move_group = self.name2group[group_name]
             joint_goal = move_group.get_current_joint_values()
             if command == 'open':
                 joint_goal = [0.02, -0.02]
             elif command == 'close':
                 joint_goal = [0.018, -0.018]
-            move_group.go(joint_goal, wait=True)
+            # move_group.go(joint_goal, wait=True)
+            move_group.set_joint_value_target(joint_goal)
+            success, plan, planning_time, error_code = move_group.plan()
+            # print(plan)
+            last = copy.deepcopy(plan.joint_trajectory.points[-1])
+            last.time_from_start = rospy.Duration.from_sec(0.5)
+            plan.joint_trajectory.points.append(last)
+            # print(plan)
+            move_group.clear_pose_targets()
+            move_group.execute(plan, wait=True)
             move_group.stop()
         else:
             eef_cmd = EndEffectorCommand()
@@ -141,7 +196,7 @@ class BaxterPlanner(Planner):
         obj_name,
         constraints=None,
         grasps=None,
-        grip_offset=0.01,
+        grip_offset=-0.01,
         pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.05,
@@ -249,20 +304,21 @@ class BaxterPlanner(Planner):
         )
         move_group.execute(plan, wait=True)
         move_group.stop()
+        move_group.clear_path_constraints()
         print("Displaced", obj_name, ".")
         return True
 
     def place(
         self,
         obj_name,
-        partial_pose,
+        partial_poses,
         constraints=None,
         pre_disp_dir=(0, 0, 1),
         pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.1,
         eef_step=0.005,
-        jump_threshold=0.0,
+        jump_threshold=5.0,
         v_scale=0.25,
         a_scale=1.0,
         grasping_group="left_hand",
@@ -280,7 +336,7 @@ class BaxterPlanner(Planner):
         displacement = [pre_disp_dist * x for x in pre_disp_dir]
         # poses = self.grasps.get_simple_placements(obj_name, partial_pose, displacement)
         poses = []
-        for pose in partial_pose:
+        for pose in partial_poses:
             # print(pose)
             epose = move_group.get_current_pose().pose
             epose.position.x = pose[0] - displacement[0]
@@ -291,6 +347,12 @@ class BaxterPlanner(Planner):
             poses.append(copy.deepcopy(epose))
             # print(epose.position)
         # poses = [copy.deepcopy(epose)]
+
+        # constrs = Constraints()
+        # constrs.orientation_constraints.append(
+        #     self.gen_gripper_constraint(epose.orientation, grasping_group)
+        # )
+        # move_group.set_path_constraints(constrs)
 
         success, raw_plan, planning_time, error_code = self.plan_ee_poses(
             poses, group_name=group_name
@@ -372,6 +434,7 @@ class BaxterPlanner(Planner):
         )
         move_group.execute(plan, wait=True)
         move_group.stop()
+        move_group.clear_path_constraints()
         print("Displaced", obj_name, ".")
         return True
 
@@ -413,3 +476,4 @@ class BaxterPlanner(Planner):
         )
         move_group.execute(plan, wait=True)
         move_group.stop()
+        move_group.clear_path_constraints()

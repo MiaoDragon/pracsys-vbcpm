@@ -265,7 +265,7 @@ class OcclusionScene():
             transformed_pcd = np.floor(transformed_pcd).astype(int)
             max_j = max(transformed_pcd[:,0].max()+1,1)
             max_i = max(transformed_pcd[:,1].max()+1,1)
-            print(max_i,max_j)
+            # print(max_i,max_j)
             depth_img = np.zeros((max_i, max_j)).astype(float)
             transformed_pcd[:, 0] = np.clip(transformed_pcd[:, 0], 0, max_i)
             transformed_pcd[:, 1] = np.clip(transformed_pcd[:, 1], 0, max_j)

@@ -500,15 +500,21 @@ print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[0]))
 print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[1]))
 print("Dynamics:", p.getDynamicsInfo(0, robot.left_gripper_id))
 print("Dynamics:", p.getDynamicsInfo(0, robot.right_gripper_id))
-lfr = 10000000000.0
-sfr = 10000000.0
-rfr = 1000000.0
+lfl = 100000000000000000.0
+sfl = 100000000000000000.0
+rfl = 100000000000000000.0
+# lfr = 10000000000000000000000000000.0
+# sfr = 10000000000000000000000000.0
+# rfr = 1000000000000000000000000.0
+lfr = 100000000000000000.0
+sfr = 100000000000000000.0
+rfr = 100000000000000000.0
 lfg = 0
 sfg = 0.0000
 rfg = 0.0000
-lf = 1.0
-sf = 0.00001
-rf = 0.00001
+lf = 10.0
+sf = 0.00005
+rf = 0.0001
 eemass = 0.0
 
 p.changeDynamics(
@@ -531,17 +537,17 @@ p.changeDynamics(
     0,
     robot.left_fingers[0],
     mass=eemass,
-    lateralFriction=lfr,
-    spinningFriction=sfr,
-    rollingFriction=rfr,
+    lateralFriction=lfl,
+    spinningFriction=sfl,
+    rollingFriction=rfl,
 )
 p.changeDynamics(
     0,
     robot.left_fingers[1],
     mass=eemass,
-    lateralFriction=lfr,
-    spinningFriction=sfr,
-    rollingFriction=rfr,
+    lateralFriction=lfl,
+    spinningFriction=sfl,
+    rollingFriction=rfl,
 )
 p.changeDynamics(
     0,
@@ -701,10 +707,11 @@ while pose_ind != 'q':
         continue
     obj_id = obj_ids[obj_i - 1]
     object_name = f'Obj_{obj_id}'
-    for chirality in ('left', 'right'):
+    # for chirality in ('left', 'right'):
+    for chirality in ('right', 'left'):
 
         pre_disp_dist = 0.05
-        grip_offset = 0.01
+        grip_offset = 0.0
         t0 = time.time()
         poses = robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
         if chirality == 'left':
@@ -734,7 +741,7 @@ while pose_ind != 'q':
             grasping_group=chirality + "_hand",
             group_name=chirality + "_arm",
         )
-        print(res, type(res))
+        # print(res, type(res))
         if res is not True:
             planner.go_to_rest_pose()
             continue
@@ -817,7 +824,7 @@ for obj_i in dg.pick_order(result)[:-1]:
             grasping_group=chirality + "_hand",
             group_name=chirality + "_arm",
         )
-        print(res, type(res))
+        # print(res, type(res))
         if res is not True:
             planner.go_to_rest_pose()
             continue

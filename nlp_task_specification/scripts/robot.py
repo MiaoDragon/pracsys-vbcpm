@@ -31,6 +31,7 @@ class Robot():
             joint_names.append(name)
             joint_indices.append(i)
             joint_name2ind[name] = i
+            # print(name,i)
 
         self.robot_id = robot_id
         self.num_joints = num_joints
@@ -48,7 +49,7 @@ class Robot():
         self.lowerLimits, self.upperLimits, self.jointRanges, self.restPoses = self.getJointRanges(
             includeFixed=False
         )
-        print(self.joint_names)
+        # print(self.joint_names)
 
         self.set_gripper('left', 'open', reset=True)
         self.set_gripper('right', 'open', reset=True)
@@ -63,15 +64,18 @@ class Robot():
     def get_joints(self):
         return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
 
-    def set_gripper(self, gripper, state='open', reset=False):
-        # MAX_FORCE = 5
-        MAX_FORCE_OPEN = 100
-        MAX_FORCE_CLOSE = 0.2
-        MAX_FORCE_CLOSE = 0.16
+    def set_gripper(self, gripper, state='open', reset=False, force=0.005):
+        # MAX_FORCE = 0.02
+        MAX_FORCE_OPEN = 10
+        # MAX_FORCE_CLOSE = force
+        MAX_FORCE_CLOSE = 0.05
         ind = 0 if state == 'close' else 1
         MAX_FORCE = MAX_FORCE_CLOSE if state == 'close' else MAX_FORCE_OPEN
-        MAX_FORCE = 0.2
+        # MAX_FORCE_LEFT = 0.2
+        # MAX_FORCE_RIGHT = 0.09
+        # MAX_FORCE_RIGHT = 0.2
         if gripper == 'left' or gripper == self.left_gripper_id:
+            # MAX_FORCE = MAX_FORCE_LEFT
             if reset:
                 p.resetJointState(
                     self.robot_id,
@@ -98,6 +102,7 @@ class Robot():
                     physicsClientId=self.pybullet_id
                 )
         elif gripper == 'right' or gripper == self.right_gripper_id:
+            # MAX_FORCE = MAX_FORCE_RIGHT
             if reset:
                 p.resetJointState(
                     self.robot_id,
@@ -171,7 +176,7 @@ class Robot():
         upperLimits=None,
         jointRanges=None,
         restPoses=None,
-        maxIter=500,
+        maxIter=800,
         threshold=1e-3
     ):
         """
@@ -268,7 +273,7 @@ class Robot():
                 )
 
     def getGrasps(
-        self, object_id, offset1=(0, 0, 0.01), offset2=(0, 0, -0.05), resolution=8
+        self, object_id, offset1=(0, 0, 0.0), offset2=(0, 0, -0.05), resolution=8
     ):
         """
         resolution must be even
@@ -300,20 +305,20 @@ class Robot():
         # obj_pos_in, obj_rot_in = p.invertTransform(obj_pos, obj_rot)
         gw = self.right_flim[1] * 2  # gripper width
 
+        def nearOdd(n):
+            return round((n - 1) / 2) * 2 + 1
+
         # positions along shape
         grasps = []
         if shape[2] == p.GEOM_BOX:
             sx, sy, sz = shape[3]
-
-            def nearOdd(n):
-                return round((n - 1) / 2) * 2 + 1
 
             # top = [0, 0, sz / 2]
             # left = [0, -sy / 2, 0]
             # right = [0, sy / 2, 0]
             # front = [-sx / 2, 0, 0]
             if sx < gw:
-                noz = nearOdd(sz / (gw * 2))
+                noz = nearOdd(sz / (gw * 1.5))
                 for z in np.linspace(-(noz - 1) / (2 * noz), (noz - 1) / (2 * noz), noz):
                     grasps.append([[0, sy / 2, z * sz], horz[3]])  # right
                     grasps.append([[0, sy / 2, z * sz], horz[9]])  # right
@@ -332,17 +337,23 @@ class Robot():
                 for x in np.linspace(-(nox - 1) / (2 * nox), (nox - 1) / (2 * nox), nox):
                     grasps.append([[x * sx, 0, sz / 2], vert[0]])  # top
                     grasps.append([[x * sx, 0, sz / 2], vert[2]])  # top
+
+            offset1 = (offset1[0], offset1[1], offset1[2] + gw * 0.75)
         elif shape[2] == p.GEOM_CYLINDER or shape[2] == p.GEOM_CAPSULE:
             h, r = shape[3][:2]
-            grasps += [[(0, 0, 0), o] for o in vert]
-            grasps += [
-                [(0, 0, 0), o]
-                for o in horz[hres * ((res - 1) // 4):hres * ((res + 3) // 4)]
-            ]
-            grasps += [
-                [(0, 0, 0), o]
-                for o in horz[hres * ((-res - 1) // 4):hres * ((-res + 3) // 4)]
-            ]
+            noz = nearOdd(h / (gw))
+            for z in np.linspace(-(noz - 1) / (2 * noz), (noz - 1) / (2 * noz), noz):
+                grasps += [[(0, 0, z * h), o] for o in vert]
+                grasps += [
+                    [(0, 0, z * h), o]
+                    for o in horz[hres * ((res - 1) // 4):hres * ((res + 3) // 4)]
+                ]
+                grasps += [
+                    [(0, 0, z * h), o]
+                    for o in horz[hres * ((-res - 1) // 4):hres * ((-res + 3) // 4)]
+                ]
+
+            offset1 = (offset1[0], offset1[1], offset1[2] + r / 2)
         elif shape[2] == p.GEOM_SPHERE:
             r = shape[3][0]
             grasps = [[(0, 0, 0), o] for o in vert + horz]
@@ -350,8 +361,12 @@ class Robot():
         # elif shape[2] == p.GEOM_PLANE:
 
         # adjust offset for finger width
-        offset1 = (offset1[0], offset1[1], offset1[2] + gw / 2)
-        offset2 = (offset2[0], offset2[1], offset2[2] + gw / 2)
+        # offset1 = (offset1[0], offset1[1], offset1[2] + gw)
+        # offset2 = (offset2[0], offset2[1], offset2[2] + gw / 2)
+        # chain offsets
+        offset2 = (
+            offset1[0] + offset2[0], offset1[1] + offset2[1], offset1[2] + offset2[2]
+        )
 
         poses = []
         for pos, rot in grasps:
@@ -396,7 +411,7 @@ class Robot():
                 rot1,
                 threshold=stopThreshold,
             )
-            # input(rot)
+            # input(rot1)
             if dist < filterThreshold:  # filter by succesful IK
                 self.set_gripper(endEffectorId, 'open', reset=True)
                 joint_states = [
