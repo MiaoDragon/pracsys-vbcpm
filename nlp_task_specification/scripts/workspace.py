@@ -10,8 +10,8 @@ class Workspace():
         self.components = {}
         self.component_ids = []
         for component_name, component in components.items():
-            print('component name: ')
-            print(component_name)
+            # print('component name: ')
+            # print(component_name)
             shape = component['shape']
             shape = np.array(shape)
             pos = component['pose']['pos']

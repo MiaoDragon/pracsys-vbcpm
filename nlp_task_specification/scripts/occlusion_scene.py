@@ -87,7 +87,7 @@ class OcclusionScene():
         # print('voxel_depth: ')
         # print(cam_to_voxel_depth - voxel_depth)
         occluded = (cam_to_voxel_depth - voxel_depth >= 0.) & (voxel_depth > 0.) & valid_mask
-        print(occluded.astype(int).sum() / valid_mask.astype(int).sum())
+        # print(occluded.astype(int).sum() / valid_mask.astype(int).sum())
         return occluded
 
     def update_occlusion(self, occlusion_label1, occupied_label1, occluded_list1, \
@@ -267,8 +267,8 @@ class OcclusionScene():
             max_i = max(transformed_pcd[:,1].max()+1,1)
             # print(max_i,max_j)
             depth_img = np.zeros((max_i, max_j)).astype(float)
-            transformed_pcd[:, 0] = np.clip(transformed_pcd[:, 0], 0, max_i)
-            transformed_pcd[:, 1] = np.clip(transformed_pcd[:, 1], 0, max_j)
+            transformed_pcd[:, 0] = np.clip(transformed_pcd[:, 0], 0, max_j)
+            transformed_pcd[:, 1] = np.clip(transformed_pcd[:, 1], 0, max_i)
             depth_img[transformed_pcd[:,1],transformed_pcd[:,0]] = depth
 
             ori_shape = depth_img.shape

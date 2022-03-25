@@ -126,20 +126,20 @@ class BaxterPlanner(Planner):
     def gen_gripper_constraint(quat, gripper):
         ocm = OrientationConstraint()
         ocm.link_name = gripper
-        ocm.header.frame_id = "base"
-        # if type(quat) in (list, tuple, np.ndarray):
-        #     ocm.orientation.x = quat[0]
-        #     ocm.orientation.y = quat[1]
-        #     ocm.orientation.z = quat[2]
-        #     ocm.orientation.w = quat[3]
-        # elif type(quat) is Quaternion:
-        #     ocm.orientation = quat
-        # else:
-        #     ocm.orientation.w = 1.0
+        ocm.header.frame_id = "world"
+        if type(quat) in (list, tuple, np.ndarray):
+            ocm.orientation.x = quat[0]
+            ocm.orientation.y = quat[1]
+            ocm.orientation.z = quat[2]
+            ocm.orientation.w = quat[3]
+        elif type(quat) is Quaternion:
+            ocm.orientation = quat
+        else:
+            ocm.orientation.w = 1.0
         ocm.orientation.w = 1.0
-        ocm.absolute_x_axis_tolerance = 0.05
-        ocm.absolute_y_axis_tolerance = 0.05
-        ocm.absolute_z_axis_tolerance = 0.05
+        ocm.absolute_x_axis_tolerance = 0.001
+        ocm.absolute_y_axis_tolerance = 0.001
+        ocm.absolute_z_axis_tolerance = 0.001
         ocm.weight = 1.0
         return ocm
 
@@ -196,10 +196,10 @@ class BaxterPlanner(Planner):
         obj_name,
         constraints=None,
         grasps=None,
-        grip_offset=-0.01,
-        pre_disp_dist=0.05,
+        grip_offset=0.0,
+        pre_disp_dist=0.06,
         post_disp_dir=(0, 0, 1),
-        post_disp_dist=0.05,
+        post_disp_dist=0.06,
         eef_step=0.001,
         jump_threshold=5.0,
         v_scale=0.25,
@@ -314,9 +314,9 @@ class BaxterPlanner(Planner):
         partial_poses,
         constraints=None,
         pre_disp_dir=(0, 0, 1),
-        pre_disp_dist=0.05,
+        pre_disp_dist=0.06,
         post_disp_dir=(0, 0, 1),
-        post_disp_dist=0.1,
+        post_disp_dist=0.12,
         eef_step=0.005,
         jump_threshold=5.0,
         v_scale=0.25,
@@ -348,10 +348,11 @@ class BaxterPlanner(Planner):
             # print(epose.position)
         # poses = [copy.deepcopy(epose)]
 
+        # gripper = "left_gripper" if grasping_group == "left_hand" else "right_gripper"
         # constrs = Constraints()
-        # constrs.orientation_constraints.append(
-        #     self.gen_gripper_constraint(epose.orientation, grasping_group)
-        # )
+        # constrs.orientation_constraints = [
+        #     self.gen_gripper_constraint(epose.orientation, gripper)
+        # ]
         # move_group.set_path_constraints(constrs)
 
         success, raw_plan, planning_time, error_code = self.plan_ee_poses(
@@ -374,7 +375,7 @@ class BaxterPlanner(Planner):
         print("Preplaced.")
 
         # slide to placement
-        scale = 0.9 * pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
+        scale = 0.95 * pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
         wpose = move_group.get_current_pose().pose
         wpose.position.x += scale * pre_disp_dir[0] * -1
         wpose.position.y += scale * pre_disp_dir[1] * -1

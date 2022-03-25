@@ -84,8 +84,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
 
     n_samples = 12000
     if level == 1:
-        obj_list = ['ontop', 'ontop']
         obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
+        obj_list = ['cube', 'wall', 'ontop', 'ontop', 'ontop', 'cylinder']
 
         pcd_cube = np.random.uniform(
             low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)
@@ -323,12 +323,11 @@ def sense():
 
     # simulated sensing
     if real:
-        obj_ind = list(range(1, len(obj_poses) + 1))
         rgb_img, depth_img, _tmp, obj_poses, target_obj_pose = camera.sense(
             obj_pcds[1:],
             obj_pcds[0],
-            obj_ind[1:],
-            obj_ind[0],
+            obj_ids[1:],
+            obj_ids[0],
         )
 
     occluded = occlusion.scene_occlusion(
@@ -447,8 +446,8 @@ if True:
         shape = (max(obj_x) + 1, max(obj_y) + 1)
         kernel = np.zeros([shape[0], shape[1]]).astype('uint8')
         kernel[obj_x, obj_y] = 1
-        print(f"Obj{obj_i}:")
-        print(kernel[:, :])
+        # print(f"Obj{obj_i}:")
+        # print(kernel[:, :])
 
 
 def visualize_placements():
@@ -492,24 +491,23 @@ def visualize_placements():
     cv2.destroyAllWindows()
 
 
+visualize_placements()
+
 ### Debug Visualization End ###
 
-print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[0]))
-print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[1]))
-print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[0]))
-print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[1]))
-print("Dynamics:", p.getDynamicsInfo(0, robot.left_gripper_id))
-print("Dynamics:", p.getDynamicsInfo(0, robot.right_gripper_id))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[0]))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.left_fingers[1]))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[0]))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.right_fingers[1]))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.left_gripper_id))
+# print("Dynamics:", p.getDynamicsInfo(0, robot.right_gripper_id))
 lfl = 100000000000000000.0
 sfl = 100000000000000000.0
 rfl = 100000000000000000.0
-# lfr = 10000000000000000000000000000.0
-# sfr = 10000000000000000000000000.0
-# rfr = 1000000000000000000000000.0
 lfr = 100000000000000000.0
 sfr = 100000000000000000.0
 rfr = 100000000000000000.0
-lfg = 0
+lfg = 0.0
 sfg = 0.0000
 rfg = 0.0000
 lf = 10.0
@@ -707,8 +705,8 @@ while pose_ind != 'q':
         continue
     obj_id = obj_ids[obj_i - 1]
     object_name = f'Obj_{obj_id}'
-    # for chirality in ('left', 'right'):
-    for chirality in ('right', 'left'):
+    for chirality in ('left', 'right'):
+        # for chirality in ('right', 'left'):
 
         pre_disp_dist = 0.05
         grip_offset = 0.0
@@ -778,7 +776,8 @@ while pose_ind != 'q':
 ### Pick End ###
 
 dg = sense()
-dg.draw_graph()
+dg.draw_graph(False)
+dg.draw_graph(True)
 suggestion = int(input("Suggest region"))
 result = dg.update_target_confidence(1, suggestion, 1000)
 while not result:
@@ -786,7 +785,7 @@ while not result:
     suggestion = int(input("Suggest region"))
     result = dg.update_target_confidence(1, suggestion, 1000)
 print("Success!", dg.pick_order(result))
-dg.draw_graph()
+dg.draw_graph(False)
 
 for obj_i in dg.pick_order(result)[:-1]:
     obj_id = obj_ids[obj_i - 1]
@@ -857,4 +856,5 @@ for obj_i in dg.pick_order(result)[:-1]:
             planner.go_to_rest_pose()
         break
 dg = sense()
-dg.draw_graph()
+dg.draw_graph(False)
+dg.draw_graph(True)

@@ -17,6 +17,7 @@ def perturbation(rmin, rmax, amin=0, amax=2 * np.pi):
 
 
 class DepGraph():
+
     def __init__(self, obj_poses, obj_colors, occlusion, occupied_label, occlusion_label):
 
         self.poses = obj_poses
@@ -24,21 +25,20 @@ class DepGraph():
         self.occupied_label = occupied_label
         self.occlusion_label = occlusion_label
 
-        # self.gt_graph = nx.DiGraph()
+        self.gt_graph = nx.DiGraph()
         self.graph = nx.DiGraph()
 
         self.upmasks = [None] * len(obj_poses)
         self.bhmasks = [None] * len(obj_poses)
         for i in range(len(obj_poses)):
-            if obj_poses[i] is None:
-                continue
-
             obj_i = i + 1
-            self.graph.add_node(obj_i, name=obj_i, color=obj_colors[i])
+            self.gt_graph.add_node(obj_i, dname=obj_i, color=obj_colors[i])
+            if obj_poses[i] is not None:
+                self.graph.add_node(obj_i, dname=obj_i, color=obj_colors[i])
             up_i = occupied_label == obj_i
             bh_i = occupied_label == obj_i
-            self.graph.add_node(-obj_i, name=-obj_i, vol=bh_i.sum(), color=obj_colors[i])
-            self.graph.add_edge(-obj_i, obj_i, etype="hidden")
+            # self.graph.add_node(-obj_i, dname=-obj_i, vol=bh_i.sum(), color=obj_colors[i])
+            # self.graph.add_edge(-obj_i, obj_i, etype="hidden")
 
             for x in range(occupied_label.shape[0]):
                 for y in range(occupied_label.shape[1]):
@@ -51,15 +51,10 @@ class DepGraph():
             self.bhmasks[i] = bh_i
 
         for i in range(len(obj_poses)):
-            if obj_poses[i] is None:
-                continue
-
             obj_i = i + 1
             obj_i_vox = occupied_label == obj_i
             obj_i_vol = obj_i_vox.sum()
             for j in range(len(obj_poses)):
-                if obj_poses[j] is None:
-                    continue
                 if i == j:
                     continue
 
@@ -70,19 +65,21 @@ class DepGraph():
 
                 # test if above
                 if (obj_i_vox & up_j_vox).sum() / obj_i_vol > 0.5:
-                    self.graph.add_edge(obj_j, obj_i, etype="below")
+                    if obj_poses[i] is not None:
+                        self.graph.add_edge(obj_j, obj_i, etype="below")
+                    self.gt_graph.add_edge(obj_j, obj_i, etype="below")
 
                 # test if behind
                 # if (obj_i_vox & bh_j_vox).sum() / obj_i_vol > 0.5:
                 #     self.graph.add_edge(obj_i, obj_j, etype="behind")
 
                 # test if occluded
-                # if (obj_i_vox & occ_j_vox).sum() / obj_i_vol > 0.9:
-                #     self.graph.add_edge(obj_i, obj_j, etype="hidden")
+                if (obj_i_vox & occ_j_vox).sum() / obj_i_vol > 0.5:
+                    self.gt_graph.add_edge(obj_i, obj_j, etype="hidden_by")
 
     def update_target_confidence(self, target, suggestion, estimated_volume):
         to_return = False
-        for v, n in list(self.graph.nodes(data="name")):
+        for v, n in list(self.graph.nodes(data="dname")):
             if v > 0 and n == target:
                 print("Target Visible!")
                 to_return = n
@@ -91,61 +88,62 @@ class DepGraph():
         if to_return:
             return to_return
 
-        for v, n in list(self.graph.nodes(data="name")):
-            if v < 0:
-                new_id = min(self.graph.nodes) - 1
-                weight = 1
-                if n == suggestion:
-                    weight += 1
-                print(estimated_volume, (self.occlusion_label == np.abs(v)).sum())
-                if estimated_volume < (self.occlusion_label == np.abs(v)).sum():
-                    weight += 1
+        for v, n in list(self.graph.nodes(data="dname")):
+            new_id = min(self.graph.nodes) - 1
+            weight = 1
+            if n == suggestion:
+                weight += 1
+            print(estimated_volume, (self.occlusion_label == np.abs(v)).sum())
+            if estimated_volume < (self.occlusion_label == np.abs(v)).sum():
+                weight += 1
 
-                # ignore weights and assume suggestion is perfect but only if it fits
-                if n == suggestion and estimated_volume < (self.occlusion_label
-                                                           == np.abs(v)).sum():
-                    self.graph.add_node(new_id, name=target, color=[1, 0, 0])
-                    self.graph.add_edge(new_id, v, etype="in", w=1)
-                    return new_id
+            # ignore weights and assume suggestion is perfect but only if it fits
+            if n == suggestion and estimated_volume < (self.occlusion_label
+                                                       == np.abs(v)).sum():
+                self.graph.add_node(new_id, dname=target, color=[1, 0, 0])
+                self.graph.add_edge(new_id, v, etype="in", w=1)
+                return new_id
 
-                # uncomment to include weight
-                # self.graph.add_node(new_id, name=target, color=[1, 0, 0])
-                # self.graph.add_edge(new_id, v, etype="in", w=weight)
+            # uncomment to include weight
+            # self.graph.add_node(new_id, dname=target, color=[1, 0, 0])
+            # self.graph.add_edge(new_id, v, etype="in", w=weight)
 
         return False
 
     def pick_order(self, pick_node):
         order = nx.dfs_postorder_nodes(self.graph, source=pick_node)
-        ind2name = dict(self.graph.nodes(data="name"))
+        ind2name = dict(self.graph.nodes(data="dname"))
         return [ind2name[v] for v in order]
 
-    def draw_graph(self, label="name"):
-        # print(self.poses, self.graph.nodes)
+    def draw_graph(self, ground_truth=False, label="dname"):
+        if ground_truth:
+            graph = self.gt_graph
+        else:
+            graph = self.graph
+        # print(self.poses, graph.nodes)
         # pos = {
         #     # v: self.poses[np.abs(v) - 1][:2, 3] + perturbation(0.005, 0.006)
         #     v: self.poses[v - 1][:2, 3] if 0 < v - 1 < len(self.poses) else perturbation(0.005,0.01)
-        #     for v in self.graph.nodes
+        #     for v in graph.nodes
         # }
-        pos = nx.planar_layout(
-            self.graph,
-            # k=1 / len(self.graph.nodes),
+        # pos = nx.planar_layout(
+        pos = nx.nx_pydot.graphviz_layout(
+            graph,
+            # 'fdp',
+            # k=1 / len(graph.nodes),
             # pos=pos,
-            # fixed=[v for v, d in self.graph.out_degree if v > 0 and d == 0],
+            # fixed=[v for v, d in graph.out_degree if v > 0 and d == 0],
             # iterations=100
         )
-        nx.draw(
-            self.graph,
-            pos,
-            node_color=list(dict(self.graph.nodes(data="color")).values())
-        )
-        nx.draw_networkx_labels(self.graph, pos, dict(self.graph.nodes(data=label)))
+        nx.draw(graph, pos, node_color=list(dict(graph.nodes(data="color")).values()))
+        nx.draw_networkx_labels(graph, pos, dict(graph.nodes(data=label)))
         nx.draw_networkx_edge_labels(
-            self.graph, pos, {(i, j): k
-                              for i, j, k in self.graph.edges(data="etype")}
+            graph, pos, {(i, j): k
+                         for i, j, k in graph.edges(data="etype")}
         )
         nx.draw_networkx_edge_labels(
-            self.graph, pos,
+            graph, pos,
             {(i, j): "" if k is None else k
-             for i, j, k in self.graph.edges(data="w")}
+             for i, j, k in graph.edges(data="w")}
         )
         show()
