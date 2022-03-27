@@ -201,8 +201,8 @@ class Pipeline():
             grasps=eof_poses,
             grip_offset=grip_offset,
             pre_disp_dist=pre_disp_dist,
-            v_scale=0.50,
-            a_scale=0.50,
+            v_scale=0.35,
+            a_scale=1.0,
             grasping_group=chirality + "_hand",
             group_name=chirality + "_arm",
         )
@@ -218,8 +218,8 @@ class Pipeline():
         res = self.planner.place(
             f'Obj_{obj_id}',
             xyzposes,
-            v_scale=0.50,
-            a_scale=0.50,
+            v_scale=0.35,
+            a_scale=1.0,
             grasping_group=self.prev_arm + "_hand",
             group_name=self.prev_arm + "_arm",
         )
@@ -240,11 +240,10 @@ class Pipeline():
             dg = self.get_dep_graph()
             dg.draw_graph(False)
             dg.draw_graph(True)
-            print(dg.graph.nodes)
+            print(dg.graph.nodes(data='dname'))
             if target_obj in dg.graph.nodes:
-                suggestion = 'NA'
-            else:
-                suggestion = input("Where is the red object?\n")
+                break
+            suggestion = input("Where is the red object?\n")
             result = dg.update_target_confidence(target_obj_name, suggestion, 0)
             dg.draw_graph(False)
             dg.draw_graph(True)
@@ -257,5 +256,9 @@ class Pipeline():
                 self.pick(obj_name)
                 self.place(obj_name)
 
+        print(dg.pick_order(target_obj))
+        for obj_name in dg.pick_order(target_obj)[:-1]:
+            self.pick(obj_name)
+            self.place(obj_name)
         self.pick(target_obj_name)
         input(f"Picked Object: {target_obj_name}")

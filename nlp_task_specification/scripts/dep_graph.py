@@ -75,7 +75,7 @@ class DepGraph():
 
                 # test if above
                 if (obj_i_vox & up_j_vox).sum() / obj_i_vol > 0.5:
-                    if obj_poses[i] is not None:
+                    if obj_poses[i] is not None and obj_poses[j] is not None:
                         self.graph.add_edge(obj_j, obj_i, etype="below")
                     self.gt_graph.add_edge(obj_j, obj_i, etype="below")
 
@@ -144,7 +144,10 @@ class DepGraph():
             # fixed=[v for v, d in graph.out_degree if v > 0 and d == 0],
             # iterations=100
         )
-        colors = list(dict(graph.nodes(data="color")).values())
+        colors = [
+            color if color is not None else [1.0, 1.0, 1.0, 1.0]
+            for color in dict(graph.nodes(data="color")).values()
+        ]
         # print(colors)
         nx.draw(graph, pos, node_color=colors)
         nx.draw_networkx_labels(graph, pos, dict(graph.nodes(data=label)))

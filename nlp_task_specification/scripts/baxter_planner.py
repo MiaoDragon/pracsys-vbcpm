@@ -168,9 +168,10 @@ class BaxterPlanner(Planner):
             move_group.set_joint_value_target(joint_goal)
             success, plan, planning_time, error_code = move_group.plan()
             # print(plan)
-            last = copy.deepcopy(plan.joint_trajectory.points[-1])
-            last.time_from_start = rospy.Duration.from_sec(0.5)
-            plan.joint_trajectory.points.append(last)
+            if len(plan.joint_trajectory.points) > 0:
+                last = copy.deepcopy(plan.joint_trajectory.points[-1])
+                last.time_from_start = rospy.Duration.from_sec(0.5)
+                plan.joint_trajectory.points.append(last)
             # print(plan)
             move_group.clear_pose_targets()
             move_group.execute(plan, wait=True)
