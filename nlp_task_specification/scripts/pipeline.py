@@ -1,6 +1,13 @@
+import time
+import copy
+import random
+
 import cv2
 import open3d as o3d
 import pybullet as p
+
+import rospy
+from planit.msg import PercievedObject
 
 import cam_utilities
 from robot import Robot
@@ -24,7 +31,8 @@ class Pipeline():
         obj_pcds,
         obj_ids,
         obj_colors,
-        pid=0
+        obj_names=None,
+        pid=0,
     ):
         self.robot = robot
         self.workspace = workspace
@@ -34,20 +42,30 @@ class Pipeline():
         self.obj_pcds = obj_pcds
         self.obj_ids = obj_ids
         self.obj_colors = obj_colors
+        self.obj_names = obj_names
         self.pid = pid
+        self.prev_arm = None
 
-        rospy.init_node("planit", anonymous=False)
+        rospy.init_node("pipeline", anonymous=False)
         self.planner = Planner(self.robot, is_sim=True)
         perception_sub = rospy.Subscriber(
-            '/perception', PercievedObject, planner.scene.updatePerception
+            '/perception', PercievedObject, self.planner.scene.updatePerception
         )
+
+        try:
+            iter(obj_names)
+        except TypeError:
+            self.name2ind = {oid: ind for ind, oid in enumerate(obj_ids)}
+        else:
+            self.name2ind = {name: ind for ind, name in enumerate(obj_names)}
 
     def sense(self, fake=True):
         width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
             width=self.camera.info['img_size'],
             height=self.camera.info['img_size'],
             viewMatrix=self.camera.info['view_mat'],
-            projectionMatrix=self.camera.info['proj_mat']
+            projectionMatrix=self.camera.info['proj_mat'],
+            physicsClientId=self.pid,
         )
 
         depth_img = depth_img / self.camera.info['factor']
@@ -57,13 +75,19 @@ class Pipeline():
         depth_img[depth_img >= far] = 0.
         depth_img[depth_img <= near] = 0.
 
+        obj_poses = copy.deepcopy(self.obj_poses)
         if fake:
+            seen_obj_ids = set(np.array(seg_img).astype(int).reshape(-1).tolist())
             for i, obj in enumerate(self.obj_ids):
-                pos, rot = p.getBasePositionAndOrientation(obj)
+                pos, rot = p.getBasePositionAndOrientation(obj, physicsClientId=self.pid)
                 pose = np.zeros((4, 4))
                 pose[:3, :3] = np.reshape(p.getMatrixFromQuaternion(rot), (3, 3))
                 pose[:3, 3] = pos
-                self.obj_poses[i] = pose
+                obj_poses[i] = pose
+                if obj in seen_obj_ids:
+                    self.obj_poses[i] = pose
+                else:
+                    self.obj_poses[i] = None
         else:
             rgb_img, depth_img, _tmp, self.obj_poses, target_obj_pose = camera.sense(
                 self.obj_pcds[1:],
@@ -72,28 +96,31 @@ class Pipeline():
                 self.obj_ids[0],
             )
 
-        occluded = occlusion.scene_occlusion(
+        occluded = self.occlusion.scene_occlusion(
             depth_img, rgb_img, self.camera.info['extrinsics'],
             self.camera.info['intrinsics']
         )
-        occlusion_label, occupied_label, occluded_list = occlusion.label_scene_occlusion(
+        # print(obj_poses)
+        occlusion_label, occupied_label, occluded_list = self.occlusion.label_scene_occlusion(
             occluded,
             self.camera.info['extrinsics'],
             self.camera.info['intrinsics'],
-            self.obj_poses,
+            obj_poses,
             self.obj_pcds,
             depth_nn=1
         )
 
         return occlusion_label, occupied_label, occluded_list
 
-    def free_space_grid(self, obj_i):
+    def free_space_grid(self, obj_ind):
+        obj_i = obj_ind + 1
+        obj_id = self.obj_ids[obj_ind]
+
         ws_low = self.workspace.region_low
         ws_high = self.workspace.region_high
 
         # get z coord for object placement
-        obj_id = self.obj_ids[obj_i - 1]
-        mins, maxs = p.getAABB(obj_id)
+        mins, maxs = p.getAABB(obj_id, physicsClientId=self.pid)
         z = mins[2] - ws_low[2] - 0.005
 
         # sense the scene
@@ -131,6 +158,104 @@ class Pipeline():
     def get_dep_graph(self):
         occlusion_label, occupied_label, occluded_list = self.sense()
         return DepGraph(
-            self.obj_poses, self.obj_colors, self.occlusion, occupied_label,
-            occlusion_label
+            self.obj_poses,
+            self.obj_colors,
+            self.obj_names,
+            self.occlusion,
+            occupied_label,
+            occlusion_label,
         )
+
+    def pick(self, obj_name):
+        pre_disp_dist = 0.06
+        grip_offset = 0.0
+        obj_id = self.obj_ids[self.name2ind[obj_name]]
+
+        t0 = time.time()
+        poses = self.robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
+        filterPosesLeft = self.robot.filterGrasps(self.robot.left_gripper_id, poses)
+        filterPosesRight = self.robot.filterGrasps(self.robot.right_gripper_id, poses)
+        # pick arm with best grasp pose:
+        chirality, fposes = min(
+            ('left', filterPosesLeft), ('right', filterPosesRight),
+            key=lambda x: (len(x[1][0]['collisions']), x[1][0]['dist'])
+            if len(x[1]) > 0 else (np.inf, np.inf)
+        )
+        t1 = time.time()
+        print("Grasp-sampling Time: ", t1 - t0)
+
+        eof_poses = [x['eof_pose_offset'] for x in fposes if len(x['collisions']) == 0]
+
+        if len(eof_poses) == 0:
+            print(f"No valid grasps of '{obj_name}'!")
+            return
+
+        if chirality == self.prev_arm:
+            pass
+        else:
+            self.planner.go_to_rest_pose()
+            self.prev_arm = chirality
+
+        res = self.planner.pick(
+            f'Obj_{obj_id}',
+            grasps=eof_poses,
+            grip_offset=grip_offset,
+            pre_disp_dist=pre_disp_dist,
+            v_scale=0.50,
+            a_scale=0.50,
+            grasping_group=chirality + "_hand",
+            group_name=chirality + "_arm",
+        )
+        if res is not True:
+            print(f"Failed to pick '{obj_name}'!")
+            self.planner.go_to_rest_pose()
+
+    def place(self, obj_name):
+        obj_ind = self.name2ind[obj_name]
+        obj_id = self.obj_ids[obj_ind]
+        res_grid = self.free_space_grid(obj_ind)
+        xyzposes = random.sample(res_grid, min(10, len(res_grid)))
+        res = self.planner.place(
+            f'Obj_{obj_id}',
+            xyzposes,
+            v_scale=0.50,
+            a_scale=0.50,
+            grasping_group=self.prev_arm + "_hand",
+            group_name=self.prev_arm + "_arm",
+        )
+        if res is not True:
+            print(f"Failed to place '{obj_name}'!")
+            self.planner.go_to_rest_pose()
+
+    def run(self):
+        # TODO ask about target object
+        target_obj_name = 'red'
+        target_obj = 1
+        occlusion_label, occupied_label, occluded_list = self.sense()
+        target_vox = occupied_label == target_obj
+        target_vol = target_vox.sum()
+        print("Targets volume:", target_vol)
+
+        while True:
+            dg = self.get_dep_graph()
+            dg.draw_graph(False)
+            dg.draw_graph(True)
+            print(dg.graph.nodes)
+            if target_obj in dg.graph.nodes:
+                suggestion = 'NA'
+            else:
+                suggestion = input("Where is the red object?\n")
+            result = dg.update_target_confidence(target_obj_name, suggestion, 0)
+            dg.draw_graph(False)
+            dg.draw_graph(True)
+            # result = dg.update_target_confidence(1, suggestion, target_vol)
+            print(result)
+            if result == target_obj:
+                break
+            print(dg.pick_order(result))
+            for obj_name in dg.pick_order(result)[:-1]:
+                self.pick(obj_name)
+                self.place(obj_name)
+
+        self.pick(target_obj_name)
+        input(f"Picked Object: {target_obj_name}")

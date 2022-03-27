@@ -23,7 +23,7 @@ class PybulletScenePublisher:
             obj_pid = p.getBodyUniqueId(i, physicsClientId=self.pybullet_id)
             if obj_pid in self.ignore_ids:
                 continue
-            obj_msg = self.obj2msg(obj_pid, self.pybullet_id)
+            obj_msg = self.obj2msg(obj_pid)
             self.publisher.publish(obj_msg)
             # print(obj_msg)
 

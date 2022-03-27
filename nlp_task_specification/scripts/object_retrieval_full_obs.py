@@ -367,12 +367,14 @@ def sense():
                 obj_poses[obj_i - 1] = None
         print(hidden_objs)
 
-    return DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
+    return DepGraph(
+        obj_poses, obj_colors, obj_ids, occlusion, occupied_label, occlusion_label
+    )
 
 
 sense()
 ### Debug Visualization ###
-dg = DepGraph(obj_poses, obj_colors, occlusion, occupied_label, occlusion_label)
+dg = DepGraph(obj_poses, obj_colors, obj_ids, occlusion, occupied_label, occlusion_label)
 if True:
     vox_occupied = []
     vox_occluded = []
@@ -788,12 +790,13 @@ print("Success!", dg.pick_order(result))
 dg.draw_graph(False)
 
 for obj_i in dg.pick_order(result)[:-1]:
-    obj_id = obj_ids[obj_i - 1]
+    obj_id = obj_i
+    # obj_id = obj_ids[obj_i-1]
     object_name = f'Obj_{obj_id}'
     for chirality in ('left', 'right'):
 
         pre_disp_dist = 0.05
-        grip_offset = 0.01
+        grip_offset = 0.0
         t0 = time.time()
         poses = robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
         if chirality == 'left':

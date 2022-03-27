@@ -19,7 +19,7 @@ class Camera():
         # https://stackoverflow.com/questions/60430958/understanding-the-view-and-projection-matrix-from-pybullet
         # https://stackoverflow.com/questions/39992968/how-to-calculate-field-of-view-of-the-camera-from-camera-intrinsic-matrix
         # https://github.com/bulletphysics/bullet3/blob/master/examples/SharedMemory/PhysicsClientC_API.cpp#L4372
-        fov = 90
+        fov = 100
         img_size = 320
         near = 0.01
         far = 1.2
