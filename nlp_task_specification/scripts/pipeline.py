@@ -227,7 +227,15 @@ class Pipeline():
             print(f"Failed to place '{obj_name}'!")
             self.planner.go_to_rest_pose()
 
-    def run(self):
+    def pick_and_place(self):
+        print("Objects in the scene: ", self.obj_names)
+        obj_name = input('Select an object to pick: ')
+        while obj_name != 'q':
+            self.pick(obj_name)
+            self.place(obj_name)
+            obj_name = input('Select an object to pick: ')
+
+    def retrieve(self):
         # TODO ask about target object
         target_obj_name = 'red'
         target_obj = 1

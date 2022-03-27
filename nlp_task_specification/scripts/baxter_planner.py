@@ -33,7 +33,10 @@ class BaxterPlanner(Planner):
             super().__init__(name, robot_description, ns, wait_for_servers)
             self.gripper_left_cmd = 'open'
             self.gripper_right_cmd = 'open'
-            # self.force = 10
+            self.pos_left = None
+            self.pos_right = None
+            self.force = 0.05
+            # self.cmode = p.POSITION_CONTROL
             self.robot = None
             self.rate = rospy.Rate(rate)
 
@@ -66,13 +69,17 @@ class BaxterPlanner(Planner):
                         'left',
                         state=self.gripper_left_cmd,
                         reset=False,
-                        # force=self.force
+                        tgt_pos=self.pos_left,
+                        force=self.force,
+                        # mode=self.cmode,
                     )
                     self.robot.set_gripper(
                         'right',
                         state=self.gripper_right_cmd,
                         reset=False,
-                        # force=self.force
+                        tgt_pos=self.pos_right,
+                        force=self.force,
+                        # mode=self.cmode,
                     )
                     # print(self.gripper_left_cmd)
                     # print(self.gripper_right_cmd)
@@ -89,19 +96,21 @@ class BaxterPlanner(Planner):
         super().__init__(gripper_width, is_sim, commander_args)
         self.move_group_left = self.MoveGroup('left_arm')
         self.move_group_left.robot = self.pb_robot
-        # self.move_group_left.force = 0.015
+        self.move_group_left.force = 0.05
         self.move_group_right = self.MoveGroup('right_arm')
         self.move_group_right.robot = self.pb_robot
-        # self.move_group_right.force = 0.015
+        self.move_group_right.force = 0.05
         self.move_group_both = self.MoveGroup('both_arms')
         self.move_group_both.robot = self.pb_robot
-        # self.move_group_both.force = 0.015
+        self.move_group_both.force = 0.05
         self.move_group_left_hand = self.MoveGroup('left_hand')
         self.move_group_left_hand.robot = self.pb_robot
-        # self.move_group_left_hand.force = 0.04
+        self.move_group_left_hand.force = 0.05
+        # self.move_group_left_hand.cmode = p.VELOCITY_CONTROL
         self.move_group_right_hand = self.MoveGroup('right_hand')
         self.move_group_right_hand.robot = self.pb_robot
-        # self.move_group_right_hand.force = 0.04
+        self.move_group_right_hand.force = 0.05
+        # self.move_group_right_hand.cmode = p.VELOCITY_CONTROL
         self.name2group = {
             'left_arm': self.move_group_left,
             'right_arm': self.move_group_right,
@@ -143,8 +152,24 @@ class BaxterPlanner(Planner):
         ocm.weight = 1.0
         return ocm
 
-    def do_end_effector(self, command, group_name="left_hand"):
+    def do_end_effector(
+        self,
+        command,
+        group_name="left_hand",
+        obj_id=None,
+    ):
         if self.is_sim:
+            # if obj_id is None:
+            #     pos_off = 0.0
+            # else:
+            #     shape = p.getCollisionShapeData(obj_id, -1, self.pb_robot.pybullet_id)[0]
+            #     if shape[2] == p.GEOM_BOX:
+            #         sx, sy, sz = shape[3]
+            #     elif shape[2] == p.GEOM_CYLINDER or shape[2] == p.GEOM_CAPSULE:
+            #         h, r = shape[3][:2]
+            #     elif shape[2] == p.GEOM_SPHERE:
+            #         r = shape[3][0]
+            #     pos_off = 0.0
             if group_name == "left_hand":
                 self.move_group_left.gripper_left_cmd = command
                 self.move_group_right.gripper_left_cmd = command
@@ -162,8 +187,12 @@ class BaxterPlanner(Planner):
             joint_goal = move_group.get_current_joint_values()
             if command == 'open':
                 joint_goal = [0.02, -0.02]
+                self.move_group_left_hand.force = 10.0
+                self.move_group_right_hand.force = 10.0
             elif command == 'close':
                 joint_goal = [0.018, -0.018]
+                self.move_group_left_hand.force = 0.05
+                self.move_group_right_hand.force = 0.05
             # move_group.go(joint_goal, wait=True)
             move_group.set_joint_value_target(joint_goal)
             success, plan, planning_time, error_code = move_group.plan()
@@ -176,6 +205,29 @@ class BaxterPlanner(Planner):
             move_group.clear_pose_targets()
             move_group.execute(plan, wait=True)
             move_group.stop()
+
+            # print(last)
+            if group_name == "left_hand":
+                joints = p.getJointStates(
+                    self.pb_robot.robot_id, self.pb_robot.left_fingers
+                )
+                print(joints)
+                # joints = [joints[0][0], -joints[0][0]]
+                joints = [p[0] for p in joints]
+                # print(self.pb_robot.left_flim)
+                self.move_group_left.pos_left = joints
+                self.move_group_right.pos_left = joints
+            if group_name == "right_hand":
+                joints = p.getJointStates(
+                    self.pb_robot.robot_id, self.pb_robot.right_fingers
+                )
+                print(joints)
+                # joints = [joints[0][0], -joints[0][0]]
+                joints = [p[0] for p in joints]
+                # print(self.pb_robot.right_flim)
+                self.move_group_left.pos_right = joints
+                self.move_group_right.pos_right = joints
+            print("Sustain joint positions: ", joints)
         else:
             eef_cmd = EndEffectorCommand()
             eef_cmd.id = 65664
@@ -457,7 +509,10 @@ class BaxterPlanner(Planner):
         # open gripper
         self.do_end_effector('open', group_name='left_hand')
         self.do_end_effector('open', group_name='right_hand')
-        move_group.detach_object()
+        # self.detach(None, group_name='left_hand')
+        # self.detach(None, group_name='right_hand')
+        self.scene.remove_attached_object()
+        # move_group.detach_object()
 
         # plan to pre goal poses
         cur_joints = move_group.get_current_joint_values()

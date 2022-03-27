@@ -115,19 +115,19 @@ def random_one_problem(scene, num_objs, num_hiding_objs):
         # obj_shape = obj_list[i%len(obj_list)]
         # randomly scale the object
         if obj_shape == 'cube':
-            x_scales = np.arange(0.25, 0.40, 0.05) / 10
-            y_scales = np.arange(0.25, 0.40, 0.05) / 10
-            z_scales = np.arange(0.6, 1.0, 0.05) / 10
+            x_scales = np.arange(0.30, 0.40, 0.05) / 10
+            y_scales = np.arange(0.30, 0.40, 0.05) / 10
+            z_scales = np.arange(0.65, 1.2, 0.05) / 10
         elif obj_shape == 'ontop':
-            x_scales = np.arange(0.25, 0.40, 0.05) / 10
-            y_scales = np.arange(0.25, 0.40, 0.05) / 10
-            z_scales = np.arange(0.6, 1.0, 0.05) / 10
+            x_scales = np.arange(0.30, 0.40, 0.05) / 10
+            y_scales = np.arange(0.30, 0.40, 0.05) / 10
+            z_scales = np.arange(0.65, 1.2, 0.05) / 10
         elif obj_shape == 'cylinder':
             x_scales = np.arange(0.25, 0.40, 0.05) / 10
             y_scales = np.arange(0.25, 0.40, 0.05) / 10
             z_scales = np.arange(1.0, 1.5, 0.05) / 10
         elif obj_shape == 'wall':
-            x_scales = np.arange(0.25, 0.40, 0.05) / 10
+            x_scales = np.arange(0.30, 0.40, 0.05) / 10
             y_scales = np.arange(2.0, 2.5, 0.05) / 10
             z_scales = np.arange(1.5, 2.0, 0.05) / 10
 
@@ -301,11 +301,17 @@ rfl = 100000000000000000.0
 lfr = 100000000000000000.0
 sfr = 100000000000000000.0
 rfr = 100000000000000000.0
+# lfl = 0.001
+# sfl = 0.1
+# rfl = 0.001
+# lfr = 0.001
+# sfr = 0.1
+# rfr = 0.001
 lfg = 0.0
 sfg = 0.0000
 rfg = 0.0000
-lf = 10.0
-sf = 0.00005
+lf = 15.0
+sf = 0.0001
 rf = 0.0001
 eemass = 0.0
 
@@ -386,6 +392,7 @@ p.setGravity(0, 0, -9.81)
 ### End Physics Parameters ###
 
 try:
-    pipeline.run()
+    pipeline.pick_and_place()
+    pipeline.retrieve()
 except KeyboardInterrupt:
     sys.exit()

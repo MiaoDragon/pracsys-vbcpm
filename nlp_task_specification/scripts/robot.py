@@ -64,18 +64,30 @@ class Robot():
     def get_joints(self):
         return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
 
-    def set_gripper(self, gripper, state='open', reset=False, force=0.005):
-        # MAX_FORCE = 0.02
-        MAX_FORCE_OPEN = 10
-        # MAX_FORCE_CLOSE = force
-        MAX_FORCE_CLOSE = 0.05
+    def get_link_pose(self, link_name):
+        link_idx = self.total_link_name_ind_dict[link_name]
+        link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
+        pos = link_state[4]
+        ori = link_state[5]  # x y z w
+        transform = tf.transformations.quaternion_matrix([ori[3], ori[0], ori[1], ori[2]])
+        transform[:3, 3] = pos
+        return transform
+
+    def set_gripper(
+        self,
+        gripper,
+        state='open',
+        reset=False,
+        tgt_pos=None,
+        force=0.05,
+        mode=p.POSITION_CONTROL,
+    ):
+        MAX_FORCE_OPEN = 100
+        MAX_FORCE_CLOSE = force
         ind = 0 if state == 'close' else 1
-        MAX_FORCE = MAX_FORCE_CLOSE if state == 'close' else MAX_FORCE_OPEN
-        # MAX_FORCE_LEFT = 0.2
-        # MAX_FORCE_RIGHT = 0.09
-        # MAX_FORCE_RIGHT = 0.2
+        MAX_FORCE = [MAX_FORCE_CLOSE, MAX_FORCE_OPEN][ind]
+
         if gripper == 'left' or gripper == self.left_gripper_id:
-            # MAX_FORCE = MAX_FORCE_LEFT
             if reset:
                 p.resetJointState(
                     self.robot_id,
@@ -95,14 +107,15 @@ class Robot():
                 p.setJointMotorControlArray(
                     bodyIndex=self.robot_id,
                     jointIndices=self.left_fingers,
-                    controlMode=p.POSITION_CONTROL,
-                    # controlMode=p.TORQUE_CONTROL,
-                    targetPositions=[self.left_flim[ind], -self.left_flim[ind]],
+                    controlMode=mode,
+                    targetPositions=[self.left_flim[ind], -self.left_flim[ind]]
+                    if tgt_pos is None else tgt_pos,
+                    targetVelocities=[0, 0],
                     forces=[MAX_FORCE] * 2,
+                    positionGains=[0.2] * 2,
                     physicsClientId=self.pybullet_id
                 )
         elif gripper == 'right' or gripper == self.right_gripper_id:
-            # MAX_FORCE = MAX_FORCE_RIGHT
             if reset:
                 p.resetJointState(
                     self.robot_id,
@@ -122,10 +135,12 @@ class Robot():
                 p.setJointMotorControlArray(
                     bodyIndex=self.robot_id,
                     jointIndices=self.right_fingers,
-                    controlMode=p.POSITION_CONTROL,
-                    # controlMode=p.TORQUE_CONTROL,
-                    targetPositions=[self.right_flim[ind], -self.right_flim[ind]],
+                    controlMode=mode,
+                    targetPositions=[self.right_flim[ind], -self.right_flim[ind]]
+                    if tgt_pos is None else tgt_pos,
+                    targetVelocities=[0, 0],
                     forces=[MAX_FORCE] * 2,
+                    positionGains=[0.2] * 2,
                     physicsClientId=self.pybullet_id
                 )
 
