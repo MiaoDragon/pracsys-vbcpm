@@ -171,44 +171,72 @@ class Pipeline():
         grip_offset = 0.0
         obj_id = self.obj_ids[self.name2ind[obj_name]]
 
-        t0 = time.time()
-        poses = self.robot.getGrasps(obj_id, offset2=(0, 0, grip_offset - pre_disp_dist))
-        filterPosesLeft = self.robot.filterGrasps(self.robot.left_gripper_id, poses)
-        filterPosesRight = self.robot.filterGrasps(self.robot.right_gripper_id, poses)
-        # pick arm with best grasp pose:
-        chirality, fposes = min(
-            ('left', filterPosesLeft), ('right', filterPosesRight),
-            key=lambda x: (len(x[1][0]['collisions']), x[1][0]['dist'])
-            if len(x[1]) > 0 else (np.inf, np.inf)
-        )
-        t1 = time.time()
-        print("Grasp-sampling Time: ", t1 - t0)
-
-        eof_poses = [x['eof_pose_offset'] for x in fposes if len(x['collisions']) == 0]
-
-        if len(eof_poses) == 0:
-            print(f"No valid grasps of '{obj_name}'!")
-            return
-
-        if chirality == self.prev_arm:
-            pass
+        # choose closest arm
+        l_arm_pos = p.getLinkState(
+            self.robot.robot_id,
+            self.robot.left_gripper_id,
+            physicsClientId=self.pid,
+        )[0]
+        r_arm_pos = p.getLinkState(
+            self.robot.robot_id,
+            self.robot.right_gripper_id,
+            physicsClientId=self.pid,
+        )[0]
+        obj_pos, _rot = p.getBasePositionAndOrientation(obj_id, physicsClientId=self.pid)
+        # print('Left:', np.linalg.norm(np.subtract(l_arm_pos, obj_pos)))
+        # print('Right:', np.linalg.norm(np.subtract(r_arm_pos, obj_pos)))
+        if np.linalg.norm(np.subtract(l_arm_pos, obj_pos)) <= np.linalg.norm(np.subtract(
+                r_arm_pos, obj_pos)):
+            arms = ['left', 'right']
         else:
-            self.planner.go_to_rest_pose()
+            arms = ['right', 'left']
+
+        for chirality in arms:
+            gripper_id = self.robot.left_gripper_id if chirality == 'left' else self.robot.right_gripper_id
+            t0 = time.time()
+            poses = self.robot.getGrasps(
+                obj_id, offset2=(0, 0, grip_offset - pre_disp_dist)
+            )
+            fposes = self.robot.filterGrasps(gripper_id, poses)
+            # pick arm with best grasp pose:
+            # chirality, fposes = min(
+            #     ('left', filterPosesLeft), ('right', filterPosesRight),
+            #     key=lambda x: (len(x[1][0]['collisions']), x[1][0]['dist'])
+            #     if len(x[1]) > 0 else (np.inf, np.inf)
+            # )
+            t1 = time.time()
+            print("Grasp-sampling Time: ", t1 - t0)
+
+            eof_poses = [
+                x['eof_pose_offset'] for x in fposes if len(x['collisions']) == 0
+            ]
+
+            if len(eof_poses) == 0:
+                print(f"No valid grasps of '{obj_name} for {chirality} arm'!")
+                continue
+
+            if self.prev_arm and chirality != self.prev_arm:
+                self.planner.go_to_rest_pose()
             self.prev_arm = chirality
 
-        res = self.planner.pick(
-            f'Obj_{obj_id}',
-            grasps=eof_poses,
-            grip_offset=grip_offset,
-            pre_disp_dist=pre_disp_dist,
-            v_scale=0.35,
-            a_scale=1.0,
-            grasping_group=chirality + "_hand",
-            group_name=chirality + "_arm",
-        )
+            res = self.planner.pick(
+                f'Obj_{obj_id}',
+                grasps=eof_poses,
+                grip_offset=grip_offset,
+                pre_disp_dist=pre_disp_dist,
+                v_scale=0.35,
+                a_scale=1.0,
+                grasping_group=chirality + "_hand",
+                group_name=chirality + "_arm",
+            )
+            if res is True:
+                break
+            print(f"Failed to pick '{obj_name} with {chirality} hand'!")
         if res is not True:
             print(f"Failed to pick '{obj_name}'!")
             self.planner.go_to_rest_pose()
+            return False
+        return True
 
     def place(self, obj_name):
         obj_ind = self.name2ind[obj_name]
@@ -226,13 +254,18 @@ class Pipeline():
         if res is not True:
             print(f"Failed to place '{obj_name}'!")
             self.planner.go_to_rest_pose()
+            return False
+        return True
 
     def pick_and_place(self):
         print("Objects in the scene: ", self.obj_names)
         obj_name = input('Select an object to pick: ')
         while obj_name != 'q':
-            self.pick(obj_name)
-            self.place(obj_name)
+            if obj_name == 'reset':
+                self.planner.go_to_rest_pose()
+            if obj_name in self.name2ind:
+                if self.pick(obj_name):
+                    self.place(obj_name)
             obj_name = input('Select an object to pick: ')
 
     def retrieve(self):
@@ -248,7 +281,7 @@ class Pipeline():
             dg = self.get_dep_graph()
             dg.draw_graph(False)
             dg.draw_graph(True)
-            print(dg.graph.nodes(data='dname'))
+            # print(dg.graph.nodes(data='dname'))
             if target_obj in dg.graph.nodes:
                 break
             suggestion = input("Where is the red object?\n")
@@ -256,7 +289,7 @@ class Pipeline():
             dg.draw_graph(False)
             dg.draw_graph(True)
             # result = dg.update_target_confidence(1, suggestion, target_vol)
-            print(result)
+            # print(result)
             if result == target_obj:
                 break
             print(dg.pick_order(result))

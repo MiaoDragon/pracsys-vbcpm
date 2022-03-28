@@ -64,14 +64,17 @@ class Robot():
     def get_joints(self):
         return [x[0] for x in p.getJointStates(self.robot_id, range(self.num_joints))]
 
-    def get_link_pose(self, link_name):
-        link_idx = self.total_link_name_ind_dict[link_name]
-        link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
+    def get_gripper_pose(self, gripper):
+        if gripper == 'left':
+            gripper_id = self.left_gripper_id
+        elif gripper == 'right':
+            gripper_id = self.right_gripper_id
+        else:
+            gripper_id = gripper
+        link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=gripper_id)
         pos = link_state[4]
-        ori = link_state[5]  # x y z w
-        transform = tf.transformations.quaternion_matrix([ori[3], ori[0], ori[1], ori[2]])
-        transform[:3, 3] = pos
-        return transform
+        rot = link_state[5]  # x y z w
+        return pos, rot
 
     def set_gripper(
         self,

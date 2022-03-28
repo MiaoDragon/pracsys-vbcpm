@@ -117,7 +117,7 @@ def random_one_problem(scene, num_objs, num_hiding_objs):
         if obj_shape == 'cube':
             x_scales = np.arange(0.30, 0.40, 0.05) / 10
             y_scales = np.arange(0.30, 0.40, 0.05) / 10
-            z_scales = np.arange(0.65, 1.2, 0.05) / 10
+            z_scales = np.arange(0.75, 1.2, 0.05) / 10
         elif obj_shape == 'ontop':
             x_scales = np.arange(0.30, 0.40, 0.05) / 10
             y_scales = np.arange(0.30, 0.40, 0.05) / 10
@@ -210,14 +210,17 @@ def random_one_problem(scene, num_objs, num_hiding_objs):
             collision = False
             for comp_name, comp_id in workspace.components.items():
                 contacts = p.getClosestPoints(
-                    bid, comp_id, distance=0., physicsClientId=pid
+                    bid, comp_id, distance=0.0, physicsClientId=pid
                 )
                 if len(contacts):
                     collision = True
                     break
             for obj_id in obj_ids:
                 contacts = p.getClosestPoints(
-                    bid, obj_id, distance=0., physicsClientId=pid
+                    bid,
+                    obj_id,
+                    distance=0.0 if obj_shape == 'ontop' else 0.005,
+                    physicsClientId=pid
                 )
                 if len(contacts):
                     collision = True
@@ -311,6 +314,7 @@ lfg = 0.0
 sfg = 0.0000
 rfg = 0.0000
 lf = 15.0
+lf = 1.0
 sf = 0.0001
 rf = 0.0001
 eemass = 0.0

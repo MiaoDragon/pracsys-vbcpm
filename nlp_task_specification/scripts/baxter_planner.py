@@ -36,6 +36,7 @@ class BaxterPlanner(Planner):
             self.pos_left = None
             self.pos_right = None
             self.force = 0.05
+            self.attached_obj = None
             # self.cmode = p.POSITION_CONTROL
             self.robot = None
             self.rate = rospy.Rate(rate)
@@ -44,7 +45,17 @@ class BaxterPlanner(Planner):
             super().execute(plan_msg, wait)
             joint_names = plan_msg.joint_trajectory.joint_names
             indices = [self.robot.joint_name2ind[x] for x in joint_names]
-            # print(joint_names)
+            if len(joint_names) == 7:
+                arm = joint_names[0].split('_')[0]
+            else:
+                arm = 'both'
+            if self.attached_obj is not None and arm != 'both':
+                init_gripper_pose = self.robot.get_gripper_pose(arm)
+                init_object_pose = p.getBasePositionAndOrientation(
+                    self.attached_obj,
+                    physicsClientId=self.robot.pybullet_id,
+                )[0:2]
+            # print(joint_names,len(joint_names))
             # print(indices)
             points = plan_msg.joint_trajectory.points
             p_secs = 0
@@ -84,6 +95,25 @@ class BaxterPlanner(Planner):
                     # print(self.gripper_left_cmd)
                     # print(self.gripper_right_cmd)
                     p.stepSimulation()
+
+                    # print("***ID2:", self.attached_obj)
+                    if self.attached_obj is not None:
+                        new_gripper_pose = self.robot.get_gripper_pose(arm)
+                        rel_transform = p.multiplyTransforms(
+                            *new_gripper_pose,
+                            *p.invertTransform(*init_gripper_pose),
+                        )
+                        new_object_pose = p.multiplyTransforms(
+                            *rel_transform,
+                            *init_object_pose,
+                        )
+                        p.resetBasePositionAndOrientation(
+                            self.attached_obj,
+                            *new_object_pose,
+                            physicsClientId=self.robot.pybullet_id,
+                        )
+                        init_object_pose = new_object_pose
+                        init_gripper_pose = new_gripper_pose
                     self.rate.sleep()
 
     def __init__(
@@ -156,7 +186,7 @@ class BaxterPlanner(Planner):
         self,
         command,
         group_name="left_hand",
-        obj_id=None,
+        # obj_id=None,
     ):
         if self.is_sim:
             # if obj_id is None:
@@ -189,10 +219,12 @@ class BaxterPlanner(Planner):
                 joint_goal = [0.02, -0.02]
                 self.move_group_left_hand.force = 10.0
                 self.move_group_right_hand.force = 10.0
+                self.move_group_left.attached_obj = None
+                self.move_group_right.attached_obj = None
             elif command == 'close':
-                joint_goal = [0.018, -0.018]
-                self.move_group_left_hand.force = 0.05
-                self.move_group_right_hand.force = 0.05
+                joint_goal = [0.02, -0.02]
+                self.move_group_left_hand.force = 0.04
+                self.move_group_right_hand.force = 0.04
             # move_group.go(joint_goal, wait=True)
             move_group.set_joint_value_target(joint_goal)
             success, plan, planning_time, error_code = move_group.plan()
@@ -206,12 +238,32 @@ class BaxterPlanner(Planner):
             move_group.execute(plan, wait=True)
             move_group.stop()
 
+            if command == 'close':
+                for i in range(p.getNumBodies(physicsClientId=self.pb_robot.pybullet_id)):
+                    obj_pid = p.getBodyUniqueId(
+                        i,
+                        physicsClientId=self.pb_robot.pybullet_id,
+                    )
+                    if obj_pid in [0, 1]:
+                        continue
+                    contacts = p.getClosestPoints(
+                        self.pb_robot.robot_id,
+                        obj_pid,
+                        distance=0.0,
+                        physicsClientId=self.pb_robot.pybullet_id,
+                    )
+                    if len(contacts):
+                        break
+                    # print("***ID:", obj_pid)
+                self.move_group_left.attached_obj = obj_pid
+                self.move_group_right.attached_obj = obj_pid
+
             # print(last)
             if group_name == "left_hand":
                 joints = p.getJointStates(
                     self.pb_robot.robot_id, self.pb_robot.left_fingers
                 )
-                print(joints)
+                # print(joints)
                 # joints = [joints[0][0], -joints[0][0]]
                 joints = [p[0] for p in joints]
                 # print(self.pb_robot.left_flim)
@@ -221,7 +273,7 @@ class BaxterPlanner(Planner):
                 joints = p.getJointStates(
                     self.pb_robot.robot_id, self.pb_robot.right_fingers
                 )
-                print(joints)
+                # print(joints)
                 # joints = [joints[0][0], -joints[0][0]]
                 joints = [p[0] for p in joints]
                 # print(self.pb_robot.right_flim)
@@ -342,7 +394,7 @@ class BaxterPlanner(Planner):
         wpose.position.z += scale * post_disp_dir[2]
         waypoints = [copy.deepcopy(wpose)]
         raw_plan, fraction = move_group.compute_cartesian_path(
-            waypoints, eef_step, jump_threshold, avoid_collisions=True
+            waypoints, eef_step, jump_threshold, avoid_collisions=False
         )
         print("Planned displacement", fraction * post_disp_dist, "for", obj_name, ".")
         if fraction < 0.5:

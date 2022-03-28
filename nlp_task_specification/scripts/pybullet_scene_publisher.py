@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import numpy as np
+
 import rospy
 import pybullet as p
 from geometry_msgs.msg import Point
@@ -61,13 +63,13 @@ class PybulletScenePublisher:
             obj_msg.type = PercievedObject.SOLID_PRIMITIVE
             if shape[2] == p.GEOM_BOX:
                 obj_msg.solid.type = SolidPrimitive.BOX
-                obj_msg.solid.dimensions = list(shape[3])
+                obj_msg.solid.dimensions = np.multiply(1.02, shape[3]).tolist()
             elif shape[2] == p.GEOM_CYLINDER:
                 obj_msg.solid.type = SolidPrimitive.CYLINDER
-                obj_msg.solid.dimensions = list(shape[3])
+                obj_msg.solid.dimensions = np.multiply(1.02, shape[3]).tolist()
             elif shape[2] == p.GEOM_SPHERE:
                 obj_msg.solid.type = SolidPrimitive.SPHERE
-                obj_msg.solid.dimensions = list(shape[3])
+                obj_msg.solid.dimensions = np.multiply(1.02, shape[3]).tolist()
             elif shape[2] == p.GEOM_CAPSULE:
                 print(
                     "Element %s with geometry type %s not supported. Ignored." %

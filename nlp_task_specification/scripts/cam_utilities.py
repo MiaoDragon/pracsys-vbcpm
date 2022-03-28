@@ -38,7 +38,7 @@ def world_to_cam(xs, ys, zs, cam_intrinsics, cam_extrinsics):
 
     # transform the points to camera frame
     pts = np.array([xs, ys, zs, np.ones(xs.shape)]).transpose((1,2,3,0)).reshape(list(xs.shape)+[4,1])  # ... x 4 x 1
-    print(np.dot(tf.inverse_matrix(cam_extrinsics), pts).reshape([4]+list(xs.shape)).shape)
+    # print(np.dot(tf.inverse_matrix(cam_extrinsics), pts).reshape([4]+list(xs.shape)).shape)
     pts = np.dot(tf.inverse_matrix(cam_extrinsics), pts).reshape([4]+list(xs.shape)).transpose((1,2,3,0))  # ... x 4
     xs = pts[...,0]
     ys = pts[...,1]
@@ -121,8 +121,8 @@ def pcd_from_depth(cam_intrinsics, cam_extrinsics, depth_img, color_img):
     valid_mask = (depth_img > 0.001)
     # print('mask shape: ')
     # print(valid_mask.shape)
-    print('before mask... world pts shape: ')
-    print(world_pts.shape)
+    # print('before mask... world pts shape: ')
+    # print(world_pts.shape)
     world_pts = np.transpose(world_pts, axes=(1,2,0,3))
     world_pts = world_pts[valid_mask]
     depth_img = depth_img[valid_mask]
@@ -142,8 +142,8 @@ def pcd_from_occlusion(cam_intrinsics, cam_extrinsics, pcd, table_h):
     cam_pos = cam_extrinsics[:3,3]  # camera pos in the world frame
     # (cam_pos + (pcd-cam_pos) * lambda)_z = table_h
     vec = pcd - cam_pos
-    print('height difference: ', table_h-cam_pos[2])
-    print(np.abs(vec[:,2]).min())
+    # print('height difference: ', table_h-cam_pos[2])
+    # print(np.abs(vec[:,2]).min())
     factor = (table_h - cam_pos[2]) / vec[:,2]
     occluded_points = cam_pos + vec * factor.reshape(-1,1)
     return occluded_points
