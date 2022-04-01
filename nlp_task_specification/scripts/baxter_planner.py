@@ -279,7 +279,7 @@ class BaxterPlanner(Planner):
                 # print(self.pb_robot.right_flim)
                 self.move_group_left.pos_right = joints
                 self.move_group_right.pos_right = joints
-            print("Sustain joint positions: ", joints)
+            print("Sustain joint positions: ", joints, file=sys.stderr)
         else:
             eef_cmd = EndEffectorCommand()
             eef_cmd.id = 65664
@@ -338,7 +338,14 @@ class BaxterPlanner(Planner):
             self.do_end_effector('close', group_name=grasping_group)
             return error_code
         else:
-            print("Planned pick for", obj_name, "in", planning_time, "seconds.")
+            print(
+                "Planned pick for",
+                obj_name,
+                "in",
+                planning_time,
+                "seconds.",
+                file=sys.stderr
+            )
 
         # retime and execute trajectory
         plan = move_group.retime_trajectory(
@@ -358,7 +365,14 @@ class BaxterPlanner(Planner):
         raw_plan, fraction = move_group.compute_cartesian_path(
             waypoints, eef_step, jump_threshold, avoid_collisions=False
         )
-        print("Planned approach", fraction * pre_disp_dist, "for", obj_name, ".")
+        print(
+            "Planned approach",
+            fraction * pre_disp_dist,
+            "for",
+            obj_name,
+            ".",
+            file=sys.stderr
+        )
         if fraction < 0.5:
             return -fraction
 
@@ -371,7 +385,7 @@ class BaxterPlanner(Planner):
         )
         move_group.execute(plan, wait=True)
         move_group.stop()
-        print("Approached", obj_name, ".")
+        print("Approached", obj_name, ".", file=sys.stderr)
 
         # close gripper
         self.do_end_effector('close', group_name=grasping_group)
@@ -381,7 +395,7 @@ class BaxterPlanner(Planner):
             obj_name, grasping_group=grasping_group, group_name=group_name
         )
         if success:
-            print("Picked", obj_name, ".")
+            print("Picked", obj_name, ".", file=sys.stderr)
         else:
             self.do_end_effector('open', group_name=grasping_group)
             return -1
@@ -396,7 +410,14 @@ class BaxterPlanner(Planner):
         raw_plan, fraction = move_group.compute_cartesian_path(
             waypoints, eef_step, jump_threshold, avoid_collisions=False
         )
-        print("Planned displacement", fraction * post_disp_dist, "for", obj_name, ".")
+        print(
+            "Planned displacement",
+            fraction * post_disp_dist,
+            "for",
+            obj_name,
+            ".",
+            file=sys.stderr
+        )
         if fraction < 0.5:
             return -fraction
 
@@ -410,7 +431,7 @@ class BaxterPlanner(Planner):
         move_group.execute(plan, wait=True)
         move_group.stop()
         move_group.clear_path_constraints()
-        print("Displaced", obj_name, ".")
+        print("Displaced", obj_name, ".", file=sys.stderr)
         return True
 
     def place(
@@ -466,7 +487,14 @@ class BaxterPlanner(Planner):
         if not success:
             return error_code
         else:
-            print("Planned placement for", obj_name, "in", planning_time, "seconds.")
+            print(
+                "Planned placement for",
+                obj_name,
+                "in",
+                planning_time,
+                "seconds.",
+                file=sys.stderr
+            )
 
         # retime and execute trajectory
         plan = move_group.retime_trajectory(
@@ -477,7 +505,7 @@ class BaxterPlanner(Planner):
         )
         move_group.execute(plan, wait=True)
         move_group.stop()
-        print("Preplaced.")
+        print("Preplaced.", file=sys.stderr)
 
         # slide to placement
         scale = 0.95 * pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
@@ -490,11 +518,16 @@ class BaxterPlanner(Planner):
             waypoints, eef_step, jump_threshold, avoid_collisions=True
         )
         print(
-            "Planned placement approach", fraction * pre_disp_dist, "for", obj_name, "."
+            "Planned placement approach",
+            fraction * pre_disp_dist,
+            "for",
+            obj_name,
+            ".",
+            file=sys.stderr
         )
         if fraction < 0.5:
             # return -fraction
-            print("Skipping Approach. Dropping Object instead!")
+            print("Skipping Approach. Dropping Object instead!", file=sys.stderr)
         else:
             # retime and execute trajectory
             plan = move_group.retime_trajectory(
@@ -505,7 +538,7 @@ class BaxterPlanner(Planner):
             )
             move_group.execute(plan, wait=True)
             move_group.stop()
-            print("Approached placement for", obj_name, ".")
+            print("Approached placement for", obj_name, ".", file=sys.stderr)
 
         # open gripper
         self.do_end_effector('open', group_name=grasping_group)
@@ -513,7 +546,7 @@ class BaxterPlanner(Planner):
         # detach from robot chain
         success = self.detach(obj_name, group_name=group_name)
         if success:
-            print("Placed", obj_name, ".")
+            print("Placed", obj_name, ".", file=sys.stderr)
         else:
             return -1
 
@@ -527,7 +560,14 @@ class BaxterPlanner(Planner):
         raw_plan, fraction = move_group.compute_cartesian_path(
             waypoints, eef_step, jump_threshold, avoid_collisions=False
         )
-        print("Planned displacement", fraction * post_disp_dist, "from", obj_name, ".")
+        print(
+            "Planned displacement",
+            fraction * post_disp_dist,
+            "from",
+            obj_name,
+            ".",
+            file=sys.stderr
+        )
         if fraction < 0.5:
             return -fraction
 
@@ -541,7 +581,7 @@ class BaxterPlanner(Planner):
         move_group.execute(plan, wait=True)
         move_group.stop()
         move_group.clear_path_constraints()
-        print("Displaced", obj_name, ".")
+        print("Displaced", obj_name, ".", file=sys.stderr)
         return True
 
     def go_to_rest_pose(
@@ -574,7 +614,14 @@ class BaxterPlanner(Planner):
         if not success:
             return error_code
         else:
-            print("Planned reset for", group_name, "in", planning_time, "seconds.")
+            print(
+                "Planned reset for",
+                group_name,
+                "in",
+                planning_time,
+                "seconds.",
+                file=sys.stderr
+            )
 
         # retime and execute trajectory
         plan = move_group.retime_trajectory(

@@ -395,8 +395,11 @@ p.setGravity(0, 0, -9.81)
 # p.setRealTimeSimulation(1)
 ### End Physics Parameters ###
 
+print('\n' * 10)
+
 try:
-    pipeline.pick_and_place()
-    pipeline.retrieve()
+    # pipeline.pick_and_place()
+    # pipeline.retrieve()
+    pipeline.choose_retrieve()
 except KeyboardInterrupt:
     sys.exit()

@@ -303,3 +303,47 @@ class Pipeline():
             self.place(obj_name)
         self.pick(target_obj_name)
         input(f"Picked Object: {target_obj_name}")
+
+    def choose_retrieve(self):
+        obj_lang_ind = []
+        while len(obj_lang_ind) == 0:
+            user_lang = input("What do you want me to pick up?\n")
+            for oname in self.obj_names:
+                try:
+                    obj_lang_ind.append((user_lang.index(oname), oname))
+                except ValueError:
+                    pass
+        objects = [y for x, y in sorted(obj_lang_ind)[:2]]
+        if len(objects) == 2:
+            target_obj_name, suggestion = objects
+        else:
+            target_obj_name = objects[0]
+            suggestion = None
+
+        target_obj = self.name2ind[target_obj_name] + 1
+        while True:
+            dg = self.get_dep_graph()
+            # dg.draw_graph(False)
+            # dg.draw_graph(True)
+            # print(dg.graph.nodes(data='dname'))
+            if target_obj in dg.graph.nodes:
+                break
+            if suggestion is None:
+                suggestion = input(f"Where is the {target_obj_name} object?\n")
+            result = dg.update_target_confidence(target_obj_name, suggestion, 0)
+            dg.draw_graph(False)
+            # dg.draw_graph(True)
+            # print(result)
+            if result == target_obj:
+                break
+            print('Picking in order:', dg.pick_order(result)[:-1])
+            for obj_name in dg.pick_order(result)[:-1]:
+                self.pick(obj_name)
+                self.place(obj_name)
+
+        print('Picking in order:', dg.pick_order(target_obj))
+        for obj_name in dg.pick_order(target_obj)[:-1]:
+            self.pick(obj_name)
+            self.place(obj_name)
+        self.pick(target_obj_name)
+        input(f"Retrieved: {target_obj_name}!")
