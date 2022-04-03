@@ -329,7 +329,11 @@ class Pipeline():
             if target_obj in dg.graph.nodes:
                 break
             if suggestion is None:
-                suggestion = input(f"Where is the {target_obj_name} object?\n")
+                user_lang = input(f"Where is the {target_obj_name} object?\n")
+                for oname in self.obj_names:
+                    if oname in user_lang:
+                        suggestion = oname
+                        break
             result = dg.update_target_confidence(target_obj_name, suggestion, 0)
             dg.draw_graph(False)
             # dg.draw_graph(True)
