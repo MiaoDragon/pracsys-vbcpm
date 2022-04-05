@@ -84,8 +84,8 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
 
     n_samples = 12000
     if level == 1:
-        obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
-        obj_list = ['cube', 'wall', 'ontop', 'ontop', 'ontop', 'cylinder']
+        # obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
+        obj_list = ['cube', 'wall', 'ontop', 'ontop', 'cylinder']
 
         pcd_cube = np.random.uniform(
             low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)

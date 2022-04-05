@@ -5,8 +5,10 @@ from math import pi, tau, dist, fabs, cos
 import numpy as np
 
 import rospy
+from std_msgs.msg import Header
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Quaternion
-from moveit_msgs.msg import OrientationConstraint, Constraints
+from moveit_msgs.msg import OrientationConstraint, Constraints, RobotState
 from baxter_core_msgs.msg import EndEffectorCommand
 
 import moveit_commander
@@ -42,13 +44,26 @@ class BaxterPlanner(Planner):
             self.rate = rospy.Rate(rate)
 
         def execute(self, plan_msg, wait=False):
-            super().execute(plan_msg, wait)
+            short_plan_msg = copy.deepcopy(plan_msg)
+            short_plan_msg.joint_trajectory.points = [
+                copy.deepcopy(plan_msg.joint_trajectory.points[0]),
+                copy.deepcopy(plan_msg.joint_trajectory.points[-1]),
+            ]
+            short_duration = rospy.Duration.from_sec(0.01)
+            short_plan_msg.joint_trajectory.points[-1].time_from_start = short_duration
+            super().execute(short_plan_msg, wait)
+
             joint_names = plan_msg.joint_trajectory.joint_names
             indices = [self.robot.joint_name2ind[x] for x in joint_names]
             if len(joint_names) == 7:
                 arm = joint_names[0].split('_')[0]
+                group = arm + '_arm'
+            elif len(joint_names) == 2:
+                arm = 'left' if joint_names[0].split('_')[0] == 'l' else 'right'
+                group = arm + '_hand'
             else:
                 arm = 'both'
+                group = arm + '_arms'
             if self.attached_obj is not None and arm != 'both':
                 init_gripper_pose = self.robot.get_gripper_pose(arm)
                 init_object_pose = p.getBasePositionAndOrientation(
@@ -58,6 +73,17 @@ class BaxterPlanner(Planner):
             # print(joint_names,len(joint_names))
             # print(indices)
             points = plan_msg.joint_trajectory.points
+
+            # jump to goal state instanstly in moveit planning scene
+            # goal = JointState()
+            # goal.header = Header()
+            # goal.header.stamp = rospy.Time.now()
+            # goal.name = joint_names
+            # goal.position = points[-1].positions
+            # robot_state = RobotState()
+            # robot_state.joint_state = goal
+            # self.set_start_state(robot_state)
+
             p_secs = 0
             for point in points[1:]:
                 secs = point.time_from_start.to_sec()

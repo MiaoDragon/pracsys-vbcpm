@@ -21,7 +21,7 @@ class Camera():
         # https://github.com/bulletphysics/bullet3/blob/master/examples/SharedMemory/PhysicsClientC_API.cpp#L4372
         fov = 100
         img_size = 640
-        near = 0.01
+        near = 0.005
         far = 1.2
         proj_mat = p.computeProjectionMatrixFOV(
             fov=fov,

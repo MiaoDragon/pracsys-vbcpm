@@ -74,8 +74,8 @@ def random_one_problem(scene, num_objs, num_hiding_objs):
     )
 
     n_samples = 12000
-    obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
-    obj_list = ['cube', 'wall', 'ontop', 'ontop', 'ontop', 'cylinder']
+    # obj_list = ['cube', 'wall', 'cylinder', 'cylinder', 'ontop', 'ontop']
+    obj_list = ['cube', 'wall', 'ontop', 'ontop', 'cylinder']
 
     pcd_cube = np.random.uniform(
         low=[-0.5, -0.5, -0.5], high=[0.5, 0.5, 0.5], size=(n_samples, 3)
@@ -398,7 +398,7 @@ p.setGravity(0, 0, -9.81)
 print('\n' * 10)
 
 try:
-    # pipeline.pick_and_place()
+    pipeline.pick_and_place()
     # pipeline.retrieve()
     pipeline.choose_retrieve()
 except KeyboardInterrupt:
