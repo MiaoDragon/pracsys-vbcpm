@@ -152,13 +152,13 @@ class BaxterPlanner(Planner):
         super().__init__(gripper_width, is_sim, commander_args)
         self.move_group_left = self.MoveGroup('left_arm')
         self.move_group_left.robot = self.pb_robot
-        self.move_group_left.force = 0.05
+        self.move_group_left.force = 1.05
         self.move_group_right = self.MoveGroup('right_arm')
         self.move_group_right.robot = self.pb_robot
-        self.move_group_right.force = 0.05
+        self.move_group_right.force = 1.05
         self.move_group_both = self.MoveGroup('both_arms')
         self.move_group_both.robot = self.pb_robot
-        self.move_group_both.force = 0.05
+        self.move_group_both.force = 1.05
         self.move_group_left_hand = self.MoveGroup('left_hand')
         self.move_group_left_hand.robot = self.pb_robot
         self.move_group_left_hand.force = 0.05

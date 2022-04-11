@@ -139,6 +139,10 @@ class Pipeline():
         shape = self.occlusion.occlusion.shape
         img = 255 * np.ones(shape[0:2]).astype('uint8')
         img[free_x, free_y] = 0
+        img[0,:] = 255
+        img[-1,:] = 255
+        img[:,0] = 255
+        img[:,-1] = 255
         # cv2.imshow("Test0", img)
         # cv2.waitKey(0)
         fimg = cv2.filter2D(img, -1, kernel)
