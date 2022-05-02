@@ -201,6 +201,13 @@ class Robot():
             joint_dict[self.joint_names[i]] = joint_vals[i]
         return joint_dict
 
+    def standarize_joint_vals(self, joint_vals):
+        """
+        given joint val, convert them to [-pi,pi]
+        """
+        joint_vals = [(joint_val+np.pi) % (2*np.pi) - np.pi for joint_val in joint_vals]
+        return joint_vals
+
     def get_link_pose(self, link_name):
         link_idx = self.total_link_name_ind_dict[link_name]
         link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
@@ -277,7 +284,7 @@ class Robot():
         self.set_joint_from_dict(prev_joint_states)
         return valid, joint_vals
 
-    def get_ik(self, link_name, position, orientation, rest_pose, collision_check=False, workspace=None):
+    def get_ik(self, link_name, position, orientation, rest_pose, collision_check=False, workspace=None, visualize=False):
         # collision_check = False
         # quat: x y z w
         # print('before IK')
@@ -289,19 +296,43 @@ class Robot():
         # print('endeffectorlinkIndex: ',self.total_link_name_ind_dict[link_name])
 
         # TODO: why does this have self collision?
+        # print('before IK')
+        # print('self.jr: ')
+        # print(self.jr)
+        # print('lower lim:')
+        # print(self.lower_lim)
+        # print('upper lim:')
+        # print(self.upper_lim)        
+        # print('restpose: ')
+        # print(rest_pose[:len(self.jr)])
+        # print('number of joint: ')
+        # n = p.getNumJoints(bodyUniqueId=self.robot_id, physicsClientId=self.pybullet_id)
+        # print(p.getNumJoints(bodyUniqueId=self.robot_id, physicsClientId=self.pybullet_id))
+        # print('joint_info: ')
+        # for i in range(n):
+        #     joint_info = p.getJointInfo(bodyUniqueId=self.robot_id, jointIndex=i, physicsClientId=self.pybullet_id)
+        #     if joint_info[2] == 0:
+        #         print('%d-th joint' % (i))
+        #         print(joint_info[0])
+        #         print(joint_info[1])
+        #         print(joint_info[2])
+
+
         dof_joint_vals = p.calculateInverseKinematics(bodyUniqueId=self.robot_id, 
                                 endEffectorLinkIndex=self.total_link_name_ind_dict[link_name], 
                                 targetPosition=position, 
                                 targetOrientation=orientation, 
                                 lowerLimits=self.lower_lim, upperLimits=self.upper_lim, 
                                 jointRanges=np.array(self.jr), 
-                                restPoses=rest_pose,
+                                restPoses=rest_pose[:len(self.jr)],
                                 maxNumIterations=2000, residualThreshold=0.001,
                                 physicsClientId=self.pybullet_id)
+
+        dof_joint_vals = self.standarize_joint_vals(dof_joint_vals)
         # print('after IK: ')
         # print(dof_joint_vals)
         # check whether the computed IK solution achieves the link pose with some threshold
-        valid = self.check_ik(dof_joint_vals, link_name, position, orientation)
+        valid = self.check_ik(dof_joint_vals, link_name, position, orientation, visualize)
         # print('dof_joint_vals > self.upper_lim: ', dof_joint_vals > self.upper_lim)
         # print('sum: ', (dof_joint_vals > self.upper_lim).sum())
 
@@ -310,6 +341,13 @@ class Robot():
 
 
         if (dof_joint_vals > self.upper_lim[:len(dof_joint_vals)]).sum()>0 or (dof_joint_vals<self.lower_lim[:len(dof_joint_vals)]).sum()>0:
+            # print('IK joint out of limit')
+            # print('ik found: ')
+            # print(dof_joint_vals)
+            # print('upper limit: ')
+            # print(self.upper_lim[:len(dof_joint_vals)])
+            # print('lower limit: ')
+            # print(self.lower_lim[:len(dof_joint_vals)])
             valid = False
         if not valid:
             return valid, dof_joint_vals
@@ -322,9 +360,12 @@ class Robot():
                 # print('state_validity failed')
                 valid = False
                 # show the result
-                self.set_joints_without_memorize(joint_dict)
-                # input('show next...')
-                self.set_joints_without_memorize(self.joint_vals)
+                if visualize:
+                    self.motion_planner.display_robot_state(robot_state, group_name='robot_arm')
+                    input('show next...')
+                    # self.set_joints_without_memorize(joint_dict)
+                    # input('show next...')
+                    # self.set_joints_without_memorize(self.joint_vals)
 
 
             # result = self.robot_in_collision(dof_joint_vals, workspace)
@@ -332,9 +373,28 @@ class Robot():
             #     valid = False
         return valid, dof_joint_vals
         
+    def quat_distance(self, q1, q2):
+        # compare two angles in quat
+        # take the shorter angle: when the dot product < 0, the angle lies in [pi,2pi]
+        # note that this is taken care of by the conditional code
+        ang_dist = np.dot(q1/np.linalg.norm(q1),q2/np.linalg.norm(q2))
+        # clipping so the dot product is valid
+        ang_dist = min(ang_dist, 1.0)
+        ang_dist = max(ang_dist, -1.0)
+        theta = 2*np.arccos(ang_dist)
+        if theta > np.pi:
+            theta = theta - 2*np.pi
+        # theta[theta>np.pi] = theta[theta>np.pi] - 2*np.pi
+        return np.abs(theta)
 
+    def swing_distance(self, q1, q2):
+        """
+        twist around the ee_link direction is fine, as it does not affect the suction cup.
+        We need to consider the swing along this direction
+        """
+        pass
 
-    def check_ik(self, dof_joint_vals, link_name, position, orientation):
+    def check_ik(self, dof_joint_vals, link_name, position, orientation, visualize=False):
         
         for i in range(len(self.joint_indices)):
             joint_idx = self.joint_indices[i]
@@ -346,16 +406,34 @@ class Robot():
         link_state = p.getLinkState(bodyUniqueId=self.robot_id, linkIndex=link_idx)
         pos = link_state[4]
         ori = link_state[5]
-        pos_threshold = 1e-2
-        ori_threshold = 1e-2
+        pos_threshold = 2e-2
+        ori_threshold = 3 * np.pi / 180
         # print('dof_joint_vals: ')
         # print(dof_joint_vals)
-        # input("checking ik")
-        self.set_joints(self.joint_vals)
-                
-        if (np.linalg.norm(np.array(pos)-np.array(position)) <= pos_threshold) and (np.linalg.norm(np.array(ori)-np.array(orientation)) <= ori_threshold):
-            return True
-        return False
+        valid = False
+        
+        if (np.linalg.norm(np.array(pos)-np.array(position)) <= pos_threshold) and (self.quat_distance(np.array(ori), np.array(orientation)) <= ori_threshold):
+            valid = True
+            return valid
+
+        if not valid:
+            # print('target pos: ', position, ' target orientation: ', orientation)
+            # print('FK pos: ', pos, ' FK ori: ', ori)
+            # print('orientation distance: ', self.quat_distance(np.array(ori), np.array(orientation)))
+            # print('position distance: ', np.linalg.norm(np.array(pos)-np.array(position)))
+            if visualize:
+                print('target pos: ', position, ' target orientation: ', orientation)
+                print('FK pos: ', pos, ' FK ori: ', ori)
+                print('orientation distance: ', self.quat_distance(np.array(ori), np.array(orientation)))
+                joint_dict = self.joint_vals_to_dict(dof_joint_vals)
+                robot_state = self.motion_planner.get_robot_state_from_joint_dict(joint_dict)                
+                self.motion_planner.display_robot_state(robot_state, group_name='robot_arm')
+
+                input("checking ik")
+
+            self.set_joints(self.joint_vals)
+
+        return valid
 
     def robot_in_collision(self, joint_vals, workspace):
         self.set_joints_without_memorize(joint_vals) 

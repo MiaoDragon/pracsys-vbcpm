@@ -208,6 +208,60 @@ class Occlusion():
         return occupied, occluded
 
 
+    def occlusion_from_pcd(self, camera_extrinsics, camera_intrinsics, img_shape, obj_poses, obj_pcds):
+        depth_img = np.zeros(img_shape).astype(float)
+        occluded = np.zeros(self.voxel_x.shape).astype(bool)
+        for obj_id, obj_pose in obj_poses.items():
+            obj_pcd = obj_pcds[obj_id]
+            R = obj_pose[:3,:3]
+            T = obj_pose[:3,3]
+
+            pcd = R.dot(obj_pcd.T).T + T
+
+            # ** extract the occlusion by object id
+            cam_transform = np.linalg.inv(camera_extrinsics)
+
+            # NOTE: multiple pcds can map to the same depth. We need to use the min value of the depth if this happens
+            if len(pcd) == 0:
+                continue
+            transformed_pcd = cam_transform[:3,:3].dot(pcd.T).T + cam_transform[:3,3]
+            fx = camera_intrinsics[0][0]
+            fy = camera_intrinsics[1][1]
+            cx = camera_intrinsics[0][2]
+            cy = camera_intrinsics[1][2]
+            transformed_pcd[:,0] = transformed_pcd[:,0] / transformed_pcd[:,2] * fx + cx
+            transformed_pcd[:,1] = transformed_pcd[:,1] / transformed_pcd[:,2] * fy + cy
+            depth = transformed_pcd[:,2]
+            transformed_pcd = transformed_pcd[:,:2]
+            transformed_pcd = np.floor(transformed_pcd).astype(int)
+            max_j = transformed_pcd[:,0].max()+1
+            max_i = transformed_pcd[:,1].max()+1
+            valid_filter = (transformed_pcd[:,0] >= 0) & (transformed_pcd[:,0] < img_shape[1]) & \
+                            (transformed_pcd[:,1] >= 0) & (transformed_pcd[:,1] < img_shape[0])
+            transformed_pcd = transformed_pcd[valid_filter]
+            
+            if len(transformed_pcd) == 0:
+                continue
+
+            unique_indices = np.unique(transformed_pcd, axis=0)
+            unique_valid = (unique_indices[:,0] >= 0) & (unique_indices[:,1] >= 0)
+            unique_indices = unique_indices[unique_valid]
+            unique_depths = np.zeros(len(unique_indices))
+            for i in range(len(unique_indices)):
+                unique_depths[i] = depth[(transformed_pcd[:,0]==unique_indices[i,0])&(transformed_pcd[:,1]==unique_indices[i,1])].min()
+            depth_img[unique_indices[:,1],unique_indices[:,0]] = unique_depths
+            # depth_img[transformed_pcd[:,1],transformed_pcd[:,0]] = depth
+            
+            # depth_img = cv2.resize(depth_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
+            # depth_img = cv2.resize(depth_img, ori_shape, interpolation=cv2.INTER_LINEAR)
+            # depth_img = cv2.resize(depth_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
+            depth_img = cv2.medianBlur(np.float32(depth_img), 5)
+
+            occluded_i = self.scene_occlusion(depth_img, None, camera_extrinsics, camera_intrinsics)
+            occluded = occluded | occluded_i
+        return occluded
+
+
     def label_scene_occlusion(self, occluded, camera_extrinsics, camera_intrinsics, obj_poses, obj_pcds, obj_opt_pcds, depth_nn=1):
         """
         depth_nn: maximum distance in the depth image to count for the object
@@ -374,7 +428,7 @@ class Occlusion():
             occupied_dict[obj_id] = occupied
         return occupied_dict
 
-    def obtain_object_uncertainty(self, obj, obj_pose, camera_extrinsics, camera_intrinsics, img_shape):
+    def obtain_object_uncertainty(self, obj, obj_pose, rpcd, camera_extrinsics, camera_intrinsics, img_shape):
         """
         given the object info and camera info, obtain the uncertainty of the object
         """
@@ -393,8 +447,6 @@ class Occlusion():
         transformed_voxel_indices[:,1] = transformed_voxel_indices[:,1] / transformed_voxel_indices[:,2] * fy + cy
         depth = transformed_voxel_indices[:,2]
         
-
-
         transformed_voxel_indices = np.floor(transformed_voxel_indices).astype(int)
         transformed_voxel_indices = transformed_voxel_indices[:,:2]
         valid_indices = (transformed_voxel_indices[:,0] >= 0) & (transformed_voxel_indices[:,0]<img_shape[1]) & \
@@ -406,7 +458,21 @@ class Occlusion():
 
         depth = depth[valid_indices]
         voxel_indices = voxel_indices[valid_indices]
-        
+
+        # * obtain the robot transformed indices
+        transformed_robot_indices = cam_transform[:3,:3].dot(rpcd.T).T + cam_transform[:3,3]
+        transformed_robot_indices[:,0] = transformed_robot_indices[:,0] / transformed_robot_indices[:,2] * fx + cx
+        transformed_robot_indices[:,1] = transformed_robot_indices[:,1] / transformed_robot_indices[:,2] * fy + cy
+        robot_depth = transformed_robot_indices[:,2]
+
+        transformed_robot_indices = np.floor(transformed_robot_indices).astype(int)
+        transformed_robot_indices = transformed_robot_indices[:,:2]
+        robot_valid_indices = (transformed_robot_indices[:,0] >= 0) & (transformed_robot_indices[:,0]<img_shape[1]) & \
+                        (transformed_robot_indices[:,1] >= 0) & (transformed_robot_indices[:,1]<img_shape[0])
+        transformed_robot_indices = transformed_robot_indices[robot_valid_indices]
+        robot_depth = robot_depth[robot_valid_indices]
+
+
         # find unique values in the voxel indices
         unique_indices = np.unique(transformed_voxel_indices, axis=0)
 
@@ -425,6 +491,13 @@ class Occlusion():
         for i in range(len(unique_indices)):
             if (unique_indices[i,0]<0 or unique_indices[i,1] < 0):
                 continue
+            
+            # find the robot mask
+            robot_mask = (transformed_robot_indices[:,0] == unique_indices[i,0]) & (transformed_robot_indices[:,1] == unique_indices[i,1])
+            if robot_mask.sum() == 0:
+                robot_depth_val = np.inf  # a large value
+            else:
+                robot_depth_val = robot_depth[robot_mask].min()
 
             mask = (transformed_voxel_indices[:,0] == unique_indices[i,0]) & (transformed_voxel_indices[:,1] == unique_indices[i,1])
             # find the first value (lowest depth)
@@ -436,12 +509,18 @@ class Occlusion():
             threshold = 1
             # find the first tsdf that is min_v
             min_v_mask = ((masked_tsdfs <= obj.min_v) | (masked_tsdf_counts < threshold))
-            min_v_id = min_v_mask.argmax()
+            min_v_id = min_v_mask.argmax()  # argmax in the bool vector will find the first that holds true
             if min_v_mask.sum() == 0:
                 # if len(mask_min_is)>1:
                 #     print('not uncertain')
                 continue
             if min_v_id == 0:
+                # extra condition: the depth value should be less than robot depth
+                if robot_depth_val < depth[mask][min_v_id]:
+                    # the robot is hiding the object
+                    # print('robot depth value: ', robot_depth_val)
+                    # print('object depth value: ', depth[mask][min_v_id])
+                    continue
 
                 sum_uncertainty += 1
                 uncertain_img[unique_indices[i,1],unique_indices[i,0]] = 1
@@ -450,6 +529,11 @@ class Occlusion():
             if (masked_tsdfs[:min_v_id]>=obj.max_v).astype(int).sum() == min_v_id:
                 # if len(mask_min_is)>1:
                 #     print('uncertain since transit from freespace to unseen')
+                if robot_depth_val < depth[mask][min_v_id]:
+                    # the robot is hiding the object
+                    # print('robot depth value: ', robot_depth_val)
+                    # print('object depth value: ', depth[mask][min_v_id])
+                    continue
                 sum_uncertainty += 1
                 uncertain_img[unique_indices[i,1],unique_indices[i,0]] = 1
                 continue

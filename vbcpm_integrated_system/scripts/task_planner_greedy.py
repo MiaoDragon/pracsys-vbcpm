@@ -26,7 +26,18 @@ from cv_bridge import CvBridge
 
 from rearrangement_plan import Rearrangement
 
-class TaskPlanner():
+
+"""
+variant of the algorithm of a greedy algorithm.
+- 
+
+NOTE:
+1. before moving check whether the object is moveable by using only reachability condition
+2. decide if an object becomes valid using only information from the camera (same as task_planner)
+3. only move each object once or twice (first time is reconstruction, second time is moving)
+4. first time of each object being manipulated, reconstruct it
+"""
+class TaskPlannerRandom():
     def __init__(self, scene_name, prob_name, trial_num):
         self.planning_system = PlanningSystem(scene_name)
         self.prob_name = prob_name
@@ -895,7 +906,7 @@ class TaskPlanner():
             joint_indices, total_blocking_object_nums, \
             total_blocking_objects, transformed_rpcds \
                 = self.pre_move_compute_valid_joints(target_obj_i, moved_objects, blocking_mask)
-        
+
         if (status == 1) or (len(valid_pts) == 0):
             return valid_pts, valid_orientations, valid_joints
 
@@ -1096,7 +1107,7 @@ class TaskPlanner():
                 res_dict['rearrange_pose_generation_time'] = self.rearrange_planner.pose_generation_time
                 res_dict['rearrange_motion_planning_calls'] = self.rearrange_planner.motion_planning_calls
                 res_dict['rearrange_pose_generation_calls'] = self.rearrange_planner.pose_generation_calls
-                res_dict['final_occluded_volume'] = self.prev_occluded.sum()
+
                 pickle.dump(res_dict, f)
                 f.close()
                 # from std_msgs.msg import Int32

@@ -38,7 +38,8 @@ class PerceptionSystem():
         self.segmentation = GroundTruthSegmentation()
 
         
-    def perceive(self, depth_img, color_img, seg_img, sensed_obj_ids, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids):
+    def perceive(self, depth_img, color_img, seg_img, sensed_obj_ids, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids,
+                 visualize=False):
         """
         given depth img and color img from camera, and segmented and labeld images from 
         Segmentation and Data Association, update occlusion and object model
@@ -71,7 +72,7 @@ class PerceptionSystem():
             seg_depth_img[seg_depth_img==0] = camera_far  # TODO: might use the actual depth?
             for cid in workspace_ids:
                 seg_depth_img[seg_img==cid] = camera_far  # workspace
-                seg_depth_img[seg_img==-1] = camera_far  # background
+            seg_depth_img[seg_img==-1] = camera_far  # background
             # # handle robot
             # # handle other object (objects that are hiding this one will be 0, and the reset will be camera_far)
             # seg_depth_img[seg_img!=seg_id] = camera_far
@@ -90,20 +91,20 @@ class PerceptionSystem():
             for i in range(len(obj_hide_set)):
                 seg_depth_img[seg_img==obj_hide_set[i]] = 0
 
-
             seg_color_img = np.array(color_img)
             seg_color_img[seg_img!=obj_id,:] = 0
 
-            # cv2.imshow('segmented depth', seg_depth_img)
-            # cv2.waitKey(0)
 
             occluded = self.occlusion.scene_occlusion(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
 
 
-            if (not (obj_id in self.objects)) or ((not self.objects[obj_id].active) and (not obj_id in valid_objects)):
+            if (not (obj_id in self.objects)) or (not self.objects[obj_id].active):
+                # NOTE: the object can be valid (fully seen currently) and we still compute the new bounding box. This is because
+                # the object might be the first time to be fully seen, and we still need to update its bounding box to consider previously
+                # hidden parts. Only when an object becomes active we will not update it anymore
                 # compute bounding box for the conservative region
-                voxel_x_min = self.occlusion.voxel_x[occluded].reshape(-1)-np.ceil(self.object_params['resol'][0]*self.object_params['scale'])-1
-                voxel_y_min = self.occlusion.voxel_y[occluded].reshape(-1)-np.ceil(self.object_params['resol'][1]*self.object_params['scale'])-1
+                voxel_x_min = self.occlusion.voxel_x[occluded].reshape(-1)-np.ceil(self.object_params['scale']/self.object_params['resol'][0])-1
+                voxel_y_min = self.occlusion.voxel_y[occluded].reshape(-1)-np.ceil(self.object_params['scale']/self.object_params['resol'][1])-1
                 voxel_z_min = np.zeros(len(voxel_x_min)) + self.occlusion.voxel_z.min()
 
                 if len(voxel_z_min) == 0:
@@ -118,9 +119,9 @@ class PerceptionSystem():
                 voxel_min = self.occlusion.transform[:3,:3].dot(voxel_min).T + self.occlusion.transform[:3,3]
                 
 
-                voxel_x_max = self.occlusion.voxel_x[occluded].reshape(-1)+np.ceil(self.object_params['resol'][0]*self.object_params['scale'])+1
-                voxel_y_max = self.occlusion.voxel_y[occluded].reshape(-1)+np.ceil(self.object_params['resol'][1]*self.object_params['scale'])+1
-                voxel_z_max = self.occlusion.voxel_z[occluded].reshape(-1)+np.ceil(self.object_params['resol'][2]*self.object_params['scale'])+1
+                voxel_x_max = self.occlusion.voxel_x[occluded].reshape(-1)+np.ceil(self.object_params['scale']/self.object_params['resol'][0])+1
+                voxel_y_max = self.occlusion.voxel_y[occluded].reshape(-1)+np.ceil(self.object_params['scale']/self.object_params['resol'][1])+1
+                voxel_z_max = self.occlusion.voxel_z[occluded].reshape(-1)+np.ceil(self.object_params['scale']/self.object_params['resol'][2])+1
                 voxel_x_max = voxel_x_max * self.occlusion.resol[0]
                 voxel_y_max = voxel_y_max * self.occlusion.resol[1]
                 voxel_z_max = voxel_z_max * self.occlusion.resol[2]
@@ -146,23 +147,43 @@ class PerceptionSystem():
 
             if (not (obj_id in self.objects)):
                 # create new object
-                new_object = ObjectModel(xmin, ymin, zmin, xmax, ymax, zmax, self.object_params['resol'], self.object_params['scale'])
+                new_object = ObjectModel(obj_id, self.data_assoc.obj_ids_reverse[obj_id], xmin, ymin, zmin, xmax, ymax, zmax, self.object_params['resol'], self.object_params['scale'])
                 self.objects[obj_id] = new_object
                 self.obj_initial_poses[obj_id] = new_object.transform
-            
-            if obj_id in valid_objects:
-                self.objects[obj_id].set_active()
-                
-
+                            
             # expand the model if inactive
             if not self.objects[obj_id].active:
                 self.objects[obj_id].expand_model(xmin, ymin, zmin, xmax, ymax, zmax)
                 self.obj_initial_poses[obj_id] = self.objects[obj_id].transform  # pose is updated
+                self.objects[obj_id].update_depth_belief(depth_img, seg_img, workspace_ids)
+                # this update the depth_img and seg_img for the object, and compute the boundary for the obj
+
+            if obj_id in valid_objects:
+                # NOTE: when it's the first time the object becomes fully revealed, we need to
+                # expand the model again to take into account space that was hidden
+                self.objects[obj_id].set_active()
 
 
-            self.objects[obj_id].update_tsdf(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
+            # self.objects[obj_id].update_tsdf(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
             # show updated conservative volume
+            if visualize:
+                ovoxel = visualize_voxel(self.occlusion.voxel_x, self.occlusion.voxel_y, self.occlusion.voxel_z,
+                                         occluded, [1,0,0])
+                obox = visualize_bbox(self.occlusion.voxel_x, self.occlusion.voxel_y, self.occlusion.voxel_z)
+                opcd = self.objects[obj_id].sample_conservative_pcd()
+                opcd = self.objects[obj_id].transform[:3,:3].dot(opcd.T).T + self.objects[obj_id].transform[:3,3]
+                opcd = self.occlusion.world_in_voxel_rot[:3,:3].dot(opcd.T).T + self.occlusion.world_in_voxel_tran
+                opcd = opcd / self.occlusion.resol
+                opcd = visualize_pcd(opcd, [0,0,1])
+                frame = visualize_coordinate_frame_centered()
+                o3d.visualization.draw_geometries([ovoxel, obox, opcd, frame])
 
+                self.objects[obj_id].update_tsdf(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics, True)
+                vvoxel = visualize_voxel(self.objects[obj_id].voxel_x, self.objects[obj_id].voxel_y, self.objects[obj_id].voxel_z,
+                                self.objects[obj_id].get_optimistic_model(), [0,0,1])
+                o3d.visualization.draw_geometries([vvoxel])
+            else:
+                self.objects[obj_id].update_tsdf(seg_depth_img, seg_color_img, camera_extrinsics, camera_intrinsics)
 
 
         # * Occlusion
