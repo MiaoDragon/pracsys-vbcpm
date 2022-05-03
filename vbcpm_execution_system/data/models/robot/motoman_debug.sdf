@@ -1,0 +1,1178 @@
+<sdf version='1.7'>
+  <model name='sda10f'>
+    <link name='base_link'>
+      <inertial>
+        <pose>0.016614 0 0.157395 0 -0 0</pose>
+        <mass>14.2475</mass>
+        <inertia>
+          <ixx>2.46591</ixx>
+          <ixy>0</ixy>
+          <ixz>-0.239532</ixz>
+          <iyy>2.49468</iyy>
+          <iyz>0</iyz>
+          <izz>0.346879</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_base.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__torso_link_b1_collision_1'>
+        <pose>0.09257 0 0.877 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_b1_remeshed.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='base_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_base.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__torso_link_b1_visual_1'>
+        <pose>0.09257 0 0.877 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_b1.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_1_s' type='revolute'>
+      <pose relative_to='base_link'>0.19253 0.0375 1.19914 1.57 -0 0</pose>
+      <parent>base_link</parent>
+      <child>arm_left_link_1_s</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_1_s'>
+      <pose relative_to='arm_left_joint_1_s'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.7365</mass>
+        <inertia>
+          <ixx>0.0066</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0066</iyy>
+          <iyz>-0.0005</iyz>
+          <izz>0.0029</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_1_s_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_s.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_1_s_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_s.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_2_l' type='revolute'>
+      <pose relative_to='arm_left_link_1_s'>0 0.0427 -0.2255 -1.57 0 0</pose>
+      <parent>arm_left_link_1_s</parent>
+      <child>arm_left_link_2_l</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-1.9</lower>
+          <upper>1.9</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_2_l'>
+      <pose relative_to='arm_left_joint_2_l'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.4476</mass>
+        <inertia>
+          <ixx>0.0031</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0014</iyy>
+          <iyz>0.0006</iyz>
+          <izz>0.0032</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_2_l_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_l.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_2_l_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_l.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_3_e' type='revolute'>
+      <pose relative_to='arm_left_link_2_l'>0 0.179 -0.0454 1.57 -0 0</pose>
+      <parent>arm_left_link_2_l</parent>
+      <child>arm_left_link_3_e</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-2.95</lower>
+          <upper>2.95</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_3_e'>
+      <pose relative_to='arm_left_joint_3_e'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.3442</mass>
+        <inertia>
+          <ixx>0.0019</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0019</iyy>
+          <iyz>0.0002</iyz>
+          <izz>0.0008</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_3_e_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_e.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_3_e_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_e.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_4_u' type='revolute'>
+      <pose relative_to='arm_left_link_3_e'>0 -0.0175 -0.181 -1.57 0 0</pose>
+      <parent>arm_left_link_3_e</parent>
+      <child>arm_left_link_4_u</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-2.36</lower>
+          <upper>2.36</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_4_u'>
+      <pose relative_to='arm_left_joint_4_u'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.3015</mass>
+        <inertia>
+          <ixx>0.002</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0006</iyy>
+          <iyz>-0.0002</iyz>
+          <izz>0.0021</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_4_u_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_u.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_4_u_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_u.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_5_r' type='revolute'>
+      <pose relative_to='arm_left_link_4_u'>0 0.2036 0.0155 1.57 -0 0</pose>
+      <parent>arm_left_link_4_u</parent>
+      <child>arm_left_link_5_r</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>3.48</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_5_r'>
+      <pose relative_to='arm_left_joint_5_r'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.214</mass>
+        <inertia>
+          <ixx>0.0009</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0009</iyy>
+          <iyz>-0.0001</iyz>
+          <izz>0.0004</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_5_r_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_r.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_5_r_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_r.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_6_b' type='revolute'>
+      <pose relative_to='arm_left_link_5_r'>0 0.013 -0.155 -1.57 0 0</pose>
+      <parent>arm_left_link_5_r</parent>
+      <child>arm_left_link_6_b</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1.9</lower>
+          <upper>1.9</upper>
+          <effort>0</effort>
+          <velocity>3.48</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_6_b'>
+      <pose relative_to='arm_left_joint_6_b'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.1829</mass>
+        <inertia>
+          <ixx>0.0007</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0003</iyy>
+          <iyz>0.0001</iyz>
+          <izz>0.0007</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_6_b_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_b_remeshed.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_6_b_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_b.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_left_joint_7_t' type='revolute'>
+      <pose relative_to='arm_left_link_6_b'>0 0.144 -0.015 1.57 -0 0</pose>
+      <parent>arm_left_link_6_b</parent>
+      <child>arm_left_link_7_t</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>6.97</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_left_link_7_t'>
+      <pose relative_to='arm_left_joint_7_t'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 -0.045 0 -0 0</pose>
+        <mass>0.0122</mass>
+        <inertia>
+          <ixx>2.49073e-05</ixx>
+          <ixy>2.76282e-11</ixy>
+          <ixz>2.01153e-07</ixz>
+          <iyy>2.49027e-05</iyy>
+          <iyz>1.16597e-09</iyz>
+          <izz>2.00001e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_left_link_7_t_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_t.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='arm_left_link_7_t_fixed_joint_lump__motoman_left_hand_collision_1'>
+        <pose>0 0 -0.09 -3.14159 -0 -3.13</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/vacuum_gripper_no_mouth.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_left_link_7_t_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_t.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='arm_left_link_7_t_fixed_joint_lump__motoman_left_hand_visual_1'>
+        <pose>0 0 -0.09 -3.14159 -0 -3.13</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/vacuum_gripper_no_mouth.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_1_s' type='revolute'>
+      <pose relative_to='base_link'>0.19253 -0.0375 1.19914 1.57 -0 -3.14</pose>
+      <parent>base_link</parent>
+      <child>arm_right_link_1_s</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_1_s'>
+      <pose relative_to='arm_right_joint_1_s'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.7365</mass>
+        <inertia>
+          <ixx>0.0066</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0066</iyy>
+          <iyz>-0.0005</iyz>
+          <izz>0.0029</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_1_s_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_s.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_1_s_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_s.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_2_l' type='revolute'>
+      <pose relative_to='arm_right_link_1_s'>0 0.0427 -0.2255 -1.57 0 0</pose>
+      <parent>arm_right_link_1_s</parent>
+      <child>arm_right_link_2_l</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1.9</lower>
+          <upper>1.9</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_2_l'>
+      <pose relative_to='arm_right_joint_2_l'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.4476</mass>
+        <inertia>
+          <ixx>0.0031</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0014</iyy>
+          <iyz>0.0006</iyz>
+          <izz>0.0032</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_2_l_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_l.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_2_l_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_l.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_3_e' type='revolute'>
+      <pose relative_to='arm_right_link_2_l'>0 0.179 -0.0454 1.57 -0 0</pose>
+      <parent>arm_right_link_2_l</parent>
+      <child>arm_right_link_3_e</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-2.95</lower>
+          <upper>2.95</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_3_e'>
+      <pose relative_to='arm_right_joint_3_e'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.3442</mass>
+        <inertia>
+          <ixx>0.0019</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0019</iyy>
+          <iyz>0.0002</iyz>
+          <izz>0.0008</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_3_e_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_e.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_3_e_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_e.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_4_u' type='revolute'>
+      <pose relative_to='arm_right_link_3_e'>0 -0.0175 -0.181 -1.57 0 0</pose>
+      <parent>arm_right_link_3_e</parent>
+      <child>arm_right_link_4_u</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-2.36</lower>
+          <upper>2.36</upper>
+          <effort>0</effort>
+          <velocity>2.95</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_4_u'>
+      <pose relative_to='arm_right_joint_4_u'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.3015</mass>
+        <inertia>
+          <ixx>0.002</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0006</iyy>
+          <iyz>-0.0002</iyz>
+          <izz>0.0021</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_4_u_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_u.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_4_u_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_u.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_5_r' type='revolute'>
+      <pose relative_to='arm_right_link_4_u'>0 0.2036 0.0155 1.57 -0 0</pose>
+      <parent>arm_right_link_4_u</parent>
+      <child>arm_right_link_5_r</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>3.48</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_5_r'>
+      <pose relative_to='arm_right_joint_5_r'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.214</mass>
+        <inertia>
+          <ixx>0.0009</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0009</iyy>
+          <iyz>-0.0001</iyz>
+          <izz>0.0004</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_5_r_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_r.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_5_r_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_r.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_6_b' type='revolute'>
+      <pose relative_to='arm_right_link_5_r'>0 0.013 -0.155 -1.57 0 0</pose>
+      <parent>arm_right_link_5_r</parent>
+      <child>arm_right_link_6_b</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-1.9</lower>
+          <upper>1.9</upper>
+          <effort>0</effort>
+          <velocity>3.48</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_6_b'>
+      <pose relative_to='arm_right_joint_6_b'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.1829</mass>
+        <inertia>
+          <ixx>-0.0007</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>-0.0003</iyy>
+          <iyz>-0.0001</iyz>
+          <izz>-0.0007</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_6_b_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_b_remeshed.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_6_b_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_b.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='arm_right_joint_7_t' type='revolute'>
+      <pose relative_to='arm_right_link_6_b'>0 0.144 -0.015 1.57 -0 0</pose>
+      <parent>arm_right_link_6_b</parent>
+      <child>arm_right_link_7_t</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-3.13</lower>
+          <upper>3.13</upper>
+          <effort>0</effort>
+          <velocity>6.97</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='arm_right_link_7_t'>
+      <pose relative_to='arm_right_joint_7_t'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 -0.001209 0 -0 0</pose>
+        <mass>0.00641</mass>
+        <inertia>
+          <ixx>3.82219e-07</ixx>
+          <ixy>1.99976e-07</ixy>
+          <ixz>1.98915e-07</ixz>
+          <iyy>3.86539e-07</iyy>
+          <iyz>2.01075e-07</iyz>
+          <izz>2.00001e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='arm_right_link_7_t_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/motoman_axis_t.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='arm_right_link_7_t_fixed_joint_lump__robotiq_arg2f_base_link_collision_1'>
+        <pose>0 0 -0.025 -3.14159 -0 -1.56</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_base_link.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='arm_right_link_7_t_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/visual/motoman_axis_t.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='arm_right_link_7_t_fixed_joint_lump__robotiq_arg2f_base_link_visual_1'>
+        <pose>0 0 -0.025 -3.14159 -0 -1.56</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='finger_joint' type='revolute'>
+      <pose relative_to='arm_right_link_7_t'>0.0306 0.00033 -0.079904 3.14159 -0 1.58159</pose>
+      <parent>arm_right_link_7_t</parent>
+      <child>left_outer_knuckle</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0.8</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='left_outer_knuckle'>
+      <pose relative_to='finger_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0.01785 -0.002323 0 -0 0</pose>
+        <mass>0.0003</mass>
+        <inertia>
+          <ixx>2.74334e-07</ixx>
+          <ixy>2e-07</ixy>
+          <ixz>2e-07</ixz>
+          <iyy>2.01238e-07</iyy>
+          <iyz>2.09514e-07</iyz>
+          <izz>2.73096e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='left_outer_knuckle_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_outer_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='left_outer_knuckle_fixed_joint_lump__left_outer_finger_collision_1'>
+        <pose>0 0.0315 -0.0041 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_outer_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='left_outer_knuckle_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_outer_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='left_outer_knuckle_fixed_joint_lump__left_outer_finger_visual_1'>
+        <pose>0 0.0315 -0.0041 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_outer_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='left_inner_finger_joint' type='revolute'>
+      <pose relative_to='left_outer_knuckle'>0 0.0376 0.043 0 -0 0</pose>
+      <parent>left_outer_knuckle</parent>
+      <child>left_inner_finger</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>-0.8757</lower>
+          <upper>0</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='left_inner_finger'>
+      <pose relative_to='left_inner_finger_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 -0.009574 0.014096 0 -0 0</pose>
+        <mass>0.00023</mass>
+        <inertia>
+          <ixx>2.86815e-07</ixx>
+          <ixy>1e-07</ixy>
+          <ixz>1e-07</ixz>
+          <iyy>2.59408e-07</iyy>
+          <iyz>1.40351e-07</iyz>
+          <izz>2.27407e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='left_inner_finger_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_inner_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='left_inner_finger_pad_collision_1'>
+        <pose>0 -0.02202 0.03242 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.022 0.00635 0.0375</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name='left_inner_finger_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_inner_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='left_inner_finger_pad_visual_1'>
+        <pose>0 -0.02202 0.03242 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.022 0.00635 0.0375</size>
+          </box>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='left_inner_knuckle_joint' type='revolute'>
+      <pose relative_to='arm_right_link_7_t'>0.0127 0.000137 -0.08642 3.14159 -0 1.58159</pose>
+      <parent>arm_right_link_7_t</parent>
+      <child>left_inner_knuckle</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0.8757</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='left_inner_knuckle'>
+      <pose relative_to='left_inner_knuckle_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.00013</mass>
+        <inertia>
+          <ixx>1e-07</ixx>
+          <ixy>1e-07</ixy>
+          <ixz>1e-07</ixz>
+          <iyy>1e-07</iyy>
+          <iyz>1e-07</iyz>
+          <izz>1e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='left_inner_knuckle_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_inner_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='left_inner_knuckle_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_inner_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='right_inner_knuckle_joint' type='revolute'>
+      <pose relative_to='arm_right_link_7_t'>-0.012699 -0.000137 -0.08642 -3.14159 -0 -1.56</pose>
+      <parent>arm_right_link_7_t</parent>
+      <child>right_inner_knuckle</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0.8757</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='right_inner_knuckle'>
+      <pose relative_to='right_inner_knuckle_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.00013</mass>
+        <inertia>
+          <ixx>1e-07</ixx>
+          <ixy>1e-07</ixy>
+          <ixz>1e-07</ixz>
+          <iyy>1e-07</iyy>
+          <iyz>1e-07</iyz>
+          <izz>1e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='right_inner_knuckle_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_inner_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='right_inner_knuckle_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_inner_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='right_outer_knuckle_joint' type='revolute'>
+      <pose relative_to='arm_right_link_7_t'>-0.030599 -0.00033 -0.079904 -3.14159 -0 -1.56</pose>
+      <parent>arm_right_link_7_t</parent>
+      <child>right_outer_knuckle</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0.81</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='right_outer_knuckle'>
+      <pose relative_to='right_outer_knuckle_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0.01785 -0.002323 0 -0 0</pose>
+        <mass>0.0003</mass>
+        <inertia>
+          <ixx>2.74334e-07</ixx>
+          <ixy>2e-07</ixy>
+          <ixz>2e-07</ixz>
+          <iyy>2.01238e-07</iyy>
+          <iyz>2.09514e-07</iyz>
+          <izz>2.73096e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='right_outer_knuckle_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_outer_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='right_outer_knuckle_fixed_joint_lump__right_outer_finger_collision_1'>
+        <pose>0 0.0315 -0.0041 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_outer_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='right_outer_knuckle_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_outer_knuckle.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='right_outer_knuckle_fixed_joint_lump__right_outer_finger_visual_1'>
+        <pose>0 0.0315 -0.0041 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_outer_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='right_inner_finger_joint' type='revolute'>
+      <pose relative_to='right_outer_knuckle'>0 0.0376 0.043 0 -0 0</pose>
+      <parent>right_outer_knuckle</parent>
+      <child>right_inner_finger</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>-0.8757</lower>
+          <upper>0</upper>
+          <effort>1000</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='right_inner_finger'>
+      <pose relative_to='right_inner_finger_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 -0.02202 0.03242 0 -0 0</pose>
+        <mass>0.00013</mass>
+        <inertia>
+          <ixx>1e-07</ixx>
+          <ixy>1e-07</ixy>
+          <ixz>1e-07</ixz>
+          <iyy>1e-07</iyy>
+          <iyz>1e-07</iyz>
+          <izz>1e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name='right_inner_finger_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/collision/robotiq_arg2f_85_inner_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='right_inner_finger_pad_collision_1'>
+        <pose>0 -0.02202 0.03242 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.022 0.00635 0.0375</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name='right_inner_finger_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>model://vbcpm_execution_system/data/models/robot/robotiq_85/visual/robotiq_arg2f_85_inner_finger.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='right_inner_finger_pad_visual_1'>
+        <pose>0 -0.02202 0.03242 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.022 0.00635 0.0375</size>
+          </box>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>
