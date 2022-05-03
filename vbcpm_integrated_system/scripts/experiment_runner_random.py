@@ -8,16 +8,16 @@ import os
 def main():
     num_objs = [11, 8, 5]
     difficulties = [3, 2, 1]
-    probs = [1,2,3,4,5,6,7,8,9,10]
+    probs = [1,2,3,4,5]#,6,7,8,9,10]
     algo_type = 1  # 0: random   1: greedy
     for num_obj in num_objs:
         for difficulty in difficulties:
             for prob in probs:
                 trials = 5
                 max_trial = 6
-                if num_objs == 11:
-                    timeout = 1200
-                elif num_objs == 8:
+                if num_obj == 11:
+                    timeout = 1000
+                elif num_obj == 8:
                     timeout = 800
                 else:
                     timeout = 400

@@ -1500,6 +1500,12 @@ class TaskPlannerRandom():
             # TODO: need to visualize to make sure workspace does not cause problems
             # TODO: also visualize in our planner if the space becomes empty at convergence
             if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or time.time()-start_time > self.timeout:
+                print('self.prev_occluded.sum: ', self.prev_occluded.sum())
+                print('moved_objects: ', len(moved_objects))
+                print('num_obj: ', self.num_obj)
+                print('time: ', time.time() - start_time)
+                print('timeout: ', self.timeout)
+
                 running_time = time.time() - start_time
                 print('#############Finished##############')
                 print('number of reconstructed objects: ', len(moved_objects))
@@ -1598,6 +1604,13 @@ class TaskPlannerRandom():
             # TODO: need to visualize to make sure workspace does not cause problems
             # TODO: also visualize in our planner if the space becomes empty at convergence
             if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or time.time() - start_time > self.timeout:
+                print('self.prev_occluded.sum: ', self.prev_occluded.sum())
+                print('moved_objects: ', len(moved_objects))
+                print('num_obj: ', self.num_obj)
+                print('time: ', time.time() - start_time)
+                print('timeout: ', self.timeout)
+
+
                 running_time = time.time() - start_time
                 print('#############Finished##############')
                 print('number of reconstructed objects: ', len(moved_objects))

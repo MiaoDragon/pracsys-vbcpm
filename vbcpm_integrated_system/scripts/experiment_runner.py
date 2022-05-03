@@ -7,7 +7,7 @@ import os
 def main():
     num_objs = [11, 8, 5]
     difficulties = [3, 2, 1]
-    probs = [1,2,3,4,   5,6,7,8,9,10]
+    probs = [1,2,3,4, 5,6,7,8,9,10]
     for num_obj in num_objs:
         for difficulty in difficulties:
             for prob in probs:
