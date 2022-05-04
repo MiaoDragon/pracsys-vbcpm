@@ -13,7 +13,7 @@ def main():
     for num_obj in num_objs:
         for difficulty in difficulties:
             for prob in probs:
-                trials = 5
+                trials = 1
                 max_trial = 6
                 if num_obj == 11:
                     timeout = 1000
