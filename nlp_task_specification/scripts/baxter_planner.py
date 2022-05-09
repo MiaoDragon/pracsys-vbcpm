@@ -44,6 +44,8 @@ class BaxterPlanner(Planner):
             self.rate = rospy.Rate(rate)
 
         def execute(self, plan_msg, wait=False):
+            if len(plan_msg.joint_trajectory.points) == 0:
+                return
             short_plan_msg = copy.deepcopy(plan_msg)
             short_plan_msg.joint_trajectory.points = [
                 copy.deepcopy(plan_msg.joint_trajectory.points[0]),

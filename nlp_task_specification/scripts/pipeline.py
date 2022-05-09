@@ -139,16 +139,16 @@ class Pipeline():
         shape = self.occlusion.occlusion.shape
         img = 255 * np.ones(shape[0:2]).astype('uint8')
         img[free_x, free_y] = 0
-        img[0,:] = 255
-        img[-1,:] = 255
-        img[:,0] = 255
-        img[:,-1] = 255
+        img[0, :] = 255
+        img[-1, :] = 255
+        img[:, 0] = 255
+        img[:, -1] = 255
         # cv2.imshow("Test0", img)
         # cv2.waitKey(0)
         fimg = cv2.filter2D(img, -1, kernel)
         # cv2.imshow("Test1", fimg)
         # cv2.waitKey(0)
-        mink_x, mink_y = np.where(img == 0)
+        mink_x, mink_y = np.where(fimg == 0)
         samples = list(
             zip(
                 mink_x * self.occlusion.resol[0] + ws_low[0],
@@ -195,6 +195,7 @@ class Pipeline():
         else:
             arms = ['right', 'left']
 
+        res = False
         for chirality in arms:
             gripper_id = self.robot.left_gripper_id if chirality == 'left' else self.robot.right_gripper_id
             t0 = time.time()
@@ -338,10 +339,11 @@ class Pipeline():
                     if oname in user_lang:
                         suggestion = oname
                         break
+
             result = dg.update_target_confidence(target_obj_name, suggestion, 0)
             dg.draw_graph(False)
             # dg.draw_graph(True)
-            # print(result)
+            print(result)
             if result == target_obj:
                 break
             print('Picking in order:', dg.pick_order(result)[:-1])

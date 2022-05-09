@@ -31,6 +31,7 @@ class DepGraph():
 
         self.poses = obj_poses
         self.colors = obj_colors
+        self.obj_names = obj_names
         self.occupied_label = occupied_label
         self.occlusion_label = occlusion_label
 
@@ -109,7 +110,9 @@ class DepGraph():
 
             # ignore weights and assume suggestion is perfect but only if it fits
             if n == suggestion and estimated_volume < (self.occlusion_label == v).sum():
-                self.graph.add_node(new_id, dname=target, color=[1.0, 0.0, 0.0])
+                self.graph.add_node(
+                    new_id, dname=target, color=self.colors[self.obj_names.index(target)]
+                )
                 self.graph.add_edge(new_id, v, etype="hidden_by", w=1)
                 return new_id
 

@@ -60,7 +60,7 @@ class PybulletScenePublisher:
             )
             return None
         else:
-            SCALE = 1.05
+            SCALE = 1.10
             obj_msg.type = PercievedObject.SOLID_PRIMITIVE
             if shape[2] == p.GEOM_BOX:
                 obj_msg.solid.type = SolidPrimitive.BOX
