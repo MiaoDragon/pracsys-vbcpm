@@ -8,9 +8,9 @@ def visualize_pcd(pcd, color):
     pcd_pcd = o3d.geometry.PointCloud()
     pcd_pcd.points = o3d.utility.Vector3dVector(pcd)
     colors = np.zeros(pcd.shape)
-    colors[:,0] = color[0]
-    colors[:,1] = color[1]
-    colors[:,2] = color[2]
+    colors[:,0] = color[:,0]
+    colors[:,1] = color[:,1]
+    colors[:,2] = color[:,2]
     pcd_pcd.colors = o3d.utility.Vector3dVector(colors)
     return pcd_pcd
 

@@ -18,7 +18,7 @@ import cv2
 LOG = 0
 
 class PerceptionSystem():
-    def __init__(self, occlusion_params, object_params, target_params):
+    def __init__(self, occlusion_params, object_params, target_params, tsdf_color_flag=False):
         occlusion = Occlusion(**occlusion_params)
         self.object_params = object_params  # resol and scale
         self.target_params = target_params  # for recognizing target object
@@ -36,7 +36,7 @@ class PerceptionSystem():
 
         self.data_assoc = GroundTruthDataAssociation()
         self.segmentation = GroundTruthSegmentation()
-
+        self.tsdf_color_flag = tsdf_color_flag
         
     def perceive(self, depth_img, color_img, seg_img, sensed_obj_ids, obj_hide_sets, camera_extrinsics, camera_intrinsics, camera_far, robot_ids, workspace_ids,
                  visualize=False):
@@ -147,7 +147,7 @@ class PerceptionSystem():
 
             if (not (obj_id in self.objects)):
                 # create new object
-                new_object = ObjectModel(obj_id, self.data_assoc.obj_ids_reverse[obj_id], xmin, ymin, zmin, xmax, ymax, zmax, self.object_params['resol'], self.object_params['scale'])
+                new_object = ObjectModel(obj_id, self.data_assoc.obj_ids_reverse[obj_id], xmin, ymin, zmin, xmax, ymax, zmax, self.object_params['resol'], self.object_params['scale'], use_color=self.tsdf_color_flag)
                 self.objects[obj_id] = new_object
                 self.obj_initial_poses[obj_id] = new_object.transform
                             

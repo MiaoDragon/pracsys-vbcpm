@@ -708,8 +708,8 @@ def load_problem_level(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
                 target_pose, target_pcd, target_obj_shape, target_obj_size):
 
     # load scene definition file
-    # pid = p.connect(p.GUI)
-    pid = p.connect(p.DIRECT)
+    pid = p.connect(p.GUI)
+    # pid = p.connect(p.DIRECT)
 
     f = open(scene, 'r')
     scene_dict = json.load(f)
@@ -764,7 +764,8 @@ def load_problem_level(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
         obj_shape = obj_shapes[i]
         # randomly scale the object
         if i == 0:
-            color = [1.0,0.,0.,1]
+            # color = [1.0,0.,0.,1]
+            color = [1,1,1,1]
         else:
             color = [1,1,1,1]
         x_size, y_size, z_size = obj_sizes[i]
@@ -798,7 +799,7 @@ def load_problem_level(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
 
 
 
-def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_padding=0.015):
+def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_padding=0.01):
     """
     generate one random instance of the problem
     last one object is the target object
@@ -894,16 +895,17 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 "pure_zhen",
                 "realsense_box",
                 "redbull",
-                "rubiks_cube",
+                # "rubiks_cube",
                 "sugar_box",
                 "tea_can1",
                 "tomato_soup_can",
                 "tuna_fish_can",
-                "wood_block",
-                "wooden_puzzle1",
-                "wooden_puzzle2",
-                "wooden_puzzle3"
+                "wood_block"#,
+                # "wooden_puzzle1",
+                # "wooden_puzzle2",
+                # "wooden_puzzle3"
             ]
+
             new_obj_name_list = []
             obj_mins = []
             obj_maxs = []
@@ -912,15 +914,16 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                     continue
                 if not os.path.exists(os.path.join(model_folder, obj_name_list[i], 'collision_meshes')):
                     continue
-                new_obj_name_list.append(obj_name_list[i])
                 # obj_i = pywavefront.Wavefront(os.path.join(model_folder, obj_name_list[i], 'google_16k/textured.obj'), parse=True, cache=False)
                 # total_vertices = np.array(obj_i.vertices)
                 # mesh = trimesh.load_mesh(os.path.join(model_folder, obj_name_list[i], 'google_16k/nontextured.stl'))
                 # total_vertices = np.array(mesh.vertices)
                 if obj_name_list[i] == 'cracker_box':
                     ori = [ 0, 0.7071068, 0, 0.7071068 ]
+                elif obj_name_list[i] in ['mug', 'pitcher_base', 'sugar_box', 'bleach_cleanser']:
+                    ori = [ 0, 0, 1, 0 ]  # make sure the handle is behind the object
                 else:
-                    ori = [0, 0, 0, 1]                    
+                    ori = [0, 0, 0, 1]
                 cid = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_name_list[i], 'collision_meshes/collision.obj'),
                                                 meshScale=[1,1,1],collisionFrameOrientation=ori)#, flags=p.GEOM_FORCE_CONCAVE_TRIMESH)
                 vid = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_name_list[i], 'meshes/visual.obj'),
@@ -930,6 +933,10 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 p.removeBody(bid)
                 print('aabbmin: ', aabbmin)
                 print('aabbmax: ', aabbmax)
+                if aabbmax[2] - aabbmin[2] < 0.07:
+                    print('height smaller than threshold')
+                    continue
+                new_obj_name_list.append(obj_name_list[i])                
                 obj_mins.append([aabbmin[0],aabbmin[1],aabbmin[2]])
                 obj_maxs.append([aabbmax[0],aabbmax[1],aabbmax[2]])
             obj_name_list = new_obj_name_list
@@ -943,10 +950,14 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
         # TODO: load the mesh of objects
         # assuming the workspace coordinate system is at the center of the world
         # * sample random objects on the workspace
+        obj_name_to_id = {}
+        for i in range(len(obj_name_list)):
+            obj_name_to_id[obj_name_list[i]] = i
         obj_ids = []
         obj_poses = []
         obj_shapes = []
-
+        print('names: ')
+        print(obj_name_list)
         for i in range(num_objs):
             # randomly pick one object shape
             if i == 0:
@@ -955,13 +966,19 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 color = [1,1,1,1]
             while True:
                 obj_shape_i = np.random.choice(len(obj_name_list))
+
                 # randomly scale the object
                 print('sampling object %d' % (i))
                 print('obj shape: ', obj_name_list[obj_shape_i])
-
+                if obj_name_list[obj_shape_i] in obj_shapes:
+                    # don't allow repeat shape
+                    continue
                 # sample a pose in the workspace
                 if i == 0:
-                    x_low_offset = (workspace_high[0]-workspace_low[0]-(obj_maxs[obj_shape_i][0]-obj_mins[obj_shape_i][0]))/2
+                    x_low_offset = (workspace_high[0]-workspace_low[0])/2 + (obj_maxs[obj_shape_i][0]-obj_mins[obj_shape_i][0])/2
+                    if obj_maxs[obj_shape_i][2] - obj_mins[obj_shape_i][2] > 0.14:
+                        continue
+
                     # x_low_offset = 0
                 else:
                     x_low_offset = 0
@@ -969,12 +986,48 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 y = np.random.uniform(low=workspace_low[1]-obj_mins[obj_shape_i][1], high=workspace_high[1]-obj_maxs[obj_shape_i][1])
                 z_offset = 0.001#0.01
                 z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset
-                obj_idx = np.random.choice(len(obj_name_list))
 
+                ###########################################
+                # * specific setting for paper illustration
+                # num_hiding_objs = -1
+                # if i == 0:
+                #     obj_shape_i = obj_name_to_id['mug']
+                #     x = min(workspace_low[0] - obj_mins[obj_shape_i][0] + 0.15, workspace_high[0]-obj_maxs[obj_shape_i][0])
+                #     y = 0.15#workspace_low[1] - obj_mins[obj_shape_i][1]  
+                #     z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset
+                    
+                # if i == 1:
+                #     obj_shape_i = obj_name_to_id['sugar_box']
+                #     x = workspace_low[0] - obj_mins[obj_shape_i][0] + 0.03
+                #     y = 0.205
+                #     z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset
+                # if i == 2:
+                #     obj_shape_i = obj_name_to_id['redbull']
+                #     x = workspace_low[0] - obj_mins[obj_shape_i][0] + 0.07
+                #     y = 0.09
+                #     z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset                    
+                #     pass
+                # if i == 3:
+                #     obj_shape_i = obj_name_to_id['jenga']
+                #     x = min(workspace_low[0] - obj_mins[obj_shape_i][0] + 0.15, workspace_high[0]-obj_maxs[obj_shape_i][0])
+                #     y = -0.175
+                #     z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset                    
+                #     pass
+                # if i == 4:
+                #     obj_shape_i = obj_name_to_id['bleach_cleanser']
+                #     x = min(workspace_low[0] - obj_mins[obj_shape_i][0] + 0.03, workspace_high[0]-obj_maxs[obj_shape_i][0])
+                #     y = -0.16
+                #     z = workspace_low[2] - np.floor(1000*obj_mins[obj_shape_i][2])/1000 + z_offset                    
+                #     pass
+
+                ###########################################
                 if obj_name_list[obj_shape_i] == 'cracker_box':
                     ori = [ 0, 0.7071068, 0, 0.7071068 ]
+                elif obj_name_list[obj_shape_i] in ['mug', 'pitcher_base', 'sugar_box', 'bleach_cleanser']:
+                    ori = [ 0, 0, 1, 0 ]  # make sure the handle is behind the object
                 else:
                     ori = [0, 0, 0, 1]
+                
                 cid = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_name_list[obj_shape_i], 'collision_meshes/collision.obj'),
                                                 meshScale=[1,1,1],collisionFrameOrientation=ori)#, flags=p.GEOM_FORCE_CONCAVE_TRIMESH)
                 vid = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_name_list[obj_shape_i], 'meshes/visual.obj'),
@@ -999,9 +1052,7 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 if collision:
                     p.removeBody(bid)
                     continue
-                if i == num_hiding_objs:
-                    # for the target, need to be hide by other objects
-                    # Method 1: use camera segmentation to see if the target is unseen
+                if i <= num_hiding_objs:
                     width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
                         width=camera.info['img_size'],
                         height=camera.info['img_size'],
@@ -1014,6 +1065,17 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                     depth_img = far * near / (far-(far-near)*depth_img)
                     depth_img[depth_img>=far] = 0.
                     depth_img[depth_img<=near]=0.
+                if i == 0 and num_hiding_objs > 0:
+                    ori_depth_img = np.array(depth_img)
+                    ori_seg_img = np.array(seg_img)
+                if i > 0 and i < num_hiding_objs:                    
+                    if ((ori_seg_img == obj_ids[0]) & (np.array(seg_img) == bid)).sum() == 0:
+                        # no intersection in the segmentation image
+                        p.removeBody(bid)
+                        continue
+                if i == num_hiding_objs:
+                    # for the target, need to be hide by other objects
+                    # Method 1: use camera segmentation to see if the target is unseen
                     seen_obj_ids = set(np.array(seg_img).astype(int).reshape(-1).tolist())
                     if obj_ids[0] in seen_obj_ids:
                         p.removeBody(bid)
@@ -1041,6 +1103,12 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
     depth_img = far * near / (far-(far-near)*depth_img)
     depth_img[depth_img>=far] = 0.
     depth_img[depth_img<=near]=0.
+
+    seen_obj_ids = set(np.array(seg_img).astype(int).reshape(-1).tolist())
+    print('visible objects: ')
+    for i in range(len(obj_ids)):
+        if obj_ids[i] in seen_obj_ids:
+            print(obj_shapes[i])
 
     return pid, scene, robot, workspace, camera, obj_poses, obj_ids, obj_shapes, \
         obj_poses[0], obj_ids[0], obj_shapes[0]
@@ -1093,7 +1161,7 @@ def load_problem_ycb(scene, obj_poses, obj_shapes,
     workspace_low = workspace.region_low
     workspace_high = workspace.region_high
     # camera
-    camera = Camera()
+    camera = Camera(visualize=False)
     obj_ids = []
     model_folder = os.path.join(package_path, "data/models/objects/ocrtoc/")
 
@@ -1108,9 +1176,12 @@ def load_problem_ycb(scene, obj_poses, obj_shapes,
             color = [1,1,1,1]
         x, y, z = obj_poses[i][:3,3]
         if obj_shape == 'cracker_box':
-            ori = [ 0, 0.7071068, 0, 0.7071068 ]        
+            ori = [ 0, 0.7071068, 0, 0.7071068 ]
+        elif obj_shape in ['mug', 'pitcher_base', 'sugar_box', 'bleach_cleanser']:
+            ori = [ 0, 0, 1, 0 ]  # make sure the handle is behind the object
         else:
-            ori = [0, 0, 0, 1]
+            ori = [0, 0, 0, 1]            
+
         cid = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_shape, 'collision_meshes/collision.obj'),
                                         meshScale=[1,1,1],collisionFrameOrientation=ori)#, flags=p.GEOM_FORCE_CONCAVE_TRIMESH)
         vid = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=os.path.join(model_folder, obj_shape, 'meshes/visual.obj'),

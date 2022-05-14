@@ -25,7 +25,7 @@ class Workspace():
             ori = component['pose']['ori']  # x y z w
 
             col_id = p.createCollisionShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, physicsClientId=pybullet_id)
-            vis_id = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, physicsClientId=pybullet_id)
+            vis_id = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, rgbaColor=[160/255, 107/255, 84/255, 1.0], physicsClientId=pybullet_id)
             comp_id = p.createMultiBody(baseCollisionShapeIndex=col_id, baseVisualShapeIndex=vis_id,
                                         basePosition=pos, baseOrientation=ori, physicsClientId=pybullet_id)
             self.component_id_dict[component_name] = comp_id

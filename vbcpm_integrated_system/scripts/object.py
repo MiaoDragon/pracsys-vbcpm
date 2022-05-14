@@ -38,7 +38,7 @@ import pose_generation
 DEBUG = False
 
 class ObjectModel():
-    def __init__(self, obj_id, pybullet_id, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03):
+    def __init__(self, obj_id, pybullet_id, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03, use_color=False):
         """
         initialize the object model to be the bounding box containing the conservative volume of the object
 
@@ -73,6 +73,11 @@ class ObjectModel():
 
         self.tsdf = np.zeros((size_x,size_y,size_z))  # default value: -1
         self.tsdf_count = np.zeros((size_x,size_y,size_z)).astype(int)  # count how many times it's observed
+        self.use_color = use_color
+        if use_color:
+            self.color_tsdf = np.zeros((size_x,size_y,size_z,3))
+        else:
+            self.color_tsdf = None
         self.voxel_x, self.voxel_y, self.voxel_z = np.indices(self.tsdf.shape).astype(float)
 
         self.scale = scale
@@ -187,9 +192,15 @@ class ObjectModel():
 
         new_tsdf = np.zeros((new_size_x, new_size_y, new_size_z))
         new_tsdf_count = np.zeros((new_size_x, new_size_y, new_size_z)).astype(int)
-
+            
         new_tsdf[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.tsdf
         new_tsdf_count[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.tsdf_count
+
+        if self.use_color:
+            new_color_tsdf = np.zeros((new_size_x, new_size_y, new_size_z,3))
+            new_color_tsdf[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.color_tsdf
+            self.color_tsdf = new_color_tsdf
+
 
         self.xmin = new_xmin
         self.ymin = new_ymin
@@ -246,6 +257,12 @@ class ObjectModel():
         valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
                         (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
         voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
+
+        if self.use_color:
+            voxel_color = np.zeros((len(transformed_voxels),3))
+            voxel_color[valid_mask] = color_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0], :3]
+            voxel_color = voxel_color.reshape(list(self.voxel_x.shape)+[3])
+
         valid_mask = valid_mask.reshape(self.voxel_x.shape)
         voxel_depth = voxel_depth.reshape(self.voxel_x.shape)
 
@@ -278,7 +295,13 @@ class ObjectModel():
         # print(((tsdf[valid_space]>self.min_v) & (tsdf[valid_space]<self.max_v)).astype(int).sum() / valid_space.astype(int).sum())
 
         self.tsdf[valid_space] = (self.tsdf[valid_space] * self.tsdf_count[valid_space] + tsdf[valid_space]) / (self.tsdf_count[valid_space] + 1)
+        if self.use_color:
+            self.color_tsdf[valid_space] = (self.color_tsdf[valid_space] * self.tsdf_count[valid_space].reshape((-1,1)) + voxel_color[valid_space]) / (self.tsdf_count[valid_space].reshape((-1,1)) + 1)
+            self.color_tsdf[self.color_tsdf > 255] = 255.0
+            self.color_tsdf[self.color_tsdf < 0] = 0
         self.tsdf_count[valid_space] = self.tsdf_count[valid_space] + 1
+
+
 
         self.tsdf[self.tsdf>self.max_v*1.1] = self.max_v*1.1
         self.tsdf[self.tsdf<self.min_v] = self.min_v
@@ -387,6 +410,47 @@ class ObjectModel():
     def sample_optimistic_pcd(self, n_sample=10):
         # obtain the pcd of the conservative volume
         return self.sample_pcd(self.get_optimistic_model(), n_sample)
+
+    def get_conservative_surface(self, save_flag=0):
+        # obtain the conservative surface
+        from skimage import measure
+        verts = measure.marching_cubes(self.tsdf, level=0)[0]
+        verts_ind = np.round(verts).astype(int)
+        vert_mask = np.zeros(self.voxel_x.shape).astype(bool)
+        vert_mask[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]] = 1
+        # remove false surface
+        tsdf_count = self.tsdf_count[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]]
+        tsdf = self.tsdf[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]]
+        valid_idx = (tsdf_count > 0) & (tsdf < self.max_v)# & (tsdf > self.min_v)
+        verts_ind = verts_ind[valid_idx]
+        verts = verts[valid_idx]
+
+        vert_mask_after_valid = np.zeros(self.voxel_x.shape).astype(bool)
+        vert_mask_after_valid[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]] = 1
+        
+        pcd = self.sample_pcd(vert_mask_after_valid) / self.resol
+        # voxel1 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, vert_mask, [0,0,1])
+        # voxel2 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, vert_mask_after_valid, [1,0,0])
+        # voxel3 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, self.get_conservative_model(), [0,1,0])
+
+        # surface_cloud = surface_cloud.voxel_down_sample(voxel_size=voxel_size)
+        # o3d.visualization.draw_geometries([voxel1])
+        # o3d.visualization.draw_geometries([voxel2])
+        # o3d.visualization.draw_geometries([voxel1,voxel2,voxel3])
+        pcd_ind = np.floor(pcd).astype(int)
+        # Get vertex colors
+        rgb_vals = self.color_tsdf[pcd_ind[:, 0], pcd_ind[:, 1], pcd_ind[:, 2]] / 255
+        if save_flag:
+            pcd = visualize_pcd(pcd, rgb_vals)
+            bbox = visualize_bbox(self.voxel_x, self.voxel_y, self.voxel_z)
+            voxel = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, self.get_conservative_model(), [1,0,0])
+            # surface_cloud = surface_cloud.voxel_down_sample(voxel_size=voxel_size)
+            o3d.visualization.draw_geometries([pcd, bbox, voxel])#, voxel])
+            o3d.io.write_point_cloud("conservative_surface.pcd", pcd)
+            np.save("saved_tsdf.npy", self.tsdf)
+            np.save("saved_tsdf_count.npy", self.tsdf_count)
+            np.save("saved_tsdf_color.npy", self.color_tsdf)
+
 
     def get_center_frame(self, pcd):
         """
