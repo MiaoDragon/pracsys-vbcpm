@@ -1501,6 +1501,8 @@ class Rearrangement():
         i_iter = 0
         success = False
 
+
+        sampled_collision_voxel = None
         while i_iter < n_iter:
             # * clear the octomap each time before we sample a goal location. This makes sure that
             # IK is not causing trouble
@@ -1697,10 +1699,11 @@ class Rearrangement():
         del robot_collision_grid
         del obj_pcd_2ds
         del moveable_obj_pcd_2ds
-        del sampled_collision_voxel
         del total_obj_pcds
         del total_obj_pcd_2ds
         del total_objs
+        del sampled_collision_voxel
+
         gc.collect()
 
         if success == False:
