@@ -708,7 +708,8 @@ def load_problem_level(scene, obj_poses, obj_pcds, obj_shapes, obj_sizes,
                 target_pose, target_pcd, target_obj_shape, target_obj_size):
 
     # load scene definition file
-    pid = p.connect(p.GUI)
+    pid = p.connect(p.GUI, options="--opengl2")
+    # p.connect(p.GUI, )
     # pid = p.connect(p.DIRECT)
 
     f = open(scene, 'r')
@@ -905,7 +906,6 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
                 # "wooden_puzzle2",
                 # "wooden_puzzle3"
             ]
-
             new_obj_name_list = []
             obj_mins = []
             obj_maxs = []
@@ -945,7 +945,6 @@ def random_one_problem_ycb(scene, level, num_objs, num_hiding_objs, safety_paddi
             pickle.dump((obj_name_list, obj_mins, obj_maxs), f)
             f.close()
         # check the size of each object
-
 
         # TODO: load the mesh of objects
         # assuming the workspace coordinate system is at the center of the world
@@ -1118,7 +1117,10 @@ def load_problem_ycb(scene, obj_poses, obj_shapes,
                 target_pose, target_obj_shape):
 
     # load scene definition file
+    # pid = p.connect(p.GUI)
     pid = p.connect(p.GUI)
+    # pid = p.connect(p.DIRECT)
+
     f = open(scene, 'r')
     scene_dict = json.load(f)
 

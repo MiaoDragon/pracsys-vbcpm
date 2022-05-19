@@ -451,7 +451,6 @@ class ObjectModel():
             np.save("saved_tsdf_count.npy", self.tsdf_count)
             np.save("saved_tsdf_color.npy", self.color_tsdf)
 
-
     def get_center_frame(self, pcd):
         """
         get the rotation  C R O  (object frame relative to center frame)

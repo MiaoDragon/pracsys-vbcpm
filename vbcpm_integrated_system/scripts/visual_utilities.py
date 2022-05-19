@@ -82,6 +82,35 @@ def get_color_picks():
     color_pick[7] = np.array([60/255, 73/255, 10/255])
     return color_pick
 
+def setup_render(center, eye, up):
+    # Create a renderer with the desired image size
+    img_width = 640
+    img_height = 480
+    render = o3d.visualization.rendering.OffscreenRenderer(img_width, img_height)
+
+    # Pick a background colour (default is light gray)
+    # render.scene.set_background([0.1, 0.2, 0.3, 1.0])  # RGBA
+
+    # Since the arrow material is unlit, it is not necessary to change the scene lighting.
+    #render.scene.scene.enable_sun_light(False)
+    #render.scene.set_lighting(render.scene.LightingProfile.NO_SHADOWS, (0, 0, 0))
+    # Optionally set the camera field of view (to zoom in a bit)
+    vertical_field_of_view = 50.0  # between 5 and 90 degrees
+    aspect_ratio = img_width / img_height  # azimuth over elevation
+    near_plane = 0.1
+    far_plane = 100.0
+    fov_type = o3d.visualization.rendering.Camera.FovType.Vertical
+    render.scene.camera.set_projection(vertical_field_of_view, aspect_ratio, near_plane, far_plane, fov_type)
+
+    # Look at the origin from the front (along the -Z direction, into the screen), with Y as Up.
+    render.scene.camera.look_at(center, eye, up)
+    return render
+
+def create_material(rgba, shader):
+    mtl = o3d.visualization.rendering.Material()
+    mtl.base_color = rgba
+    mtl.shader = shader
+    return mtl
 
 import copy
 import pybullet as p
@@ -140,7 +169,7 @@ def construct_occlusion_graph(obj_ids, obj_pybullet_poses, camera, pid):
 
     visible_nodes = []
     nodes = [obj_i for obj_i in obj_ids]
-
+    node_poses = []
     # connect edge from obj to camera
     rgb_img_i, depth_img_i, seg_img_i = camera.sense()
     visible_set = set(seg_img_i.reshape(-1).tolist())
@@ -176,25 +205,35 @@ def construct_occlusion_graph(obj_ids, obj_pybullet_poses, camera, pid):
 
     # given the edges, construct the graph
     for i in range(len(nodes)):
-        dot.add_node(nodes[i], pos='%f,%f!' % (-10*obj_pybullet_poses[i][1,3],10*obj_pybullet_poses[i][0,3]))
+        dot.add_node(nodes[i], pos='%f,%f!' % (-8*obj_pybullet_poses[i][1,3],8*obj_pybullet_poses[i][0,3]))
+        node_poses.append((-8*obj_pybullet_poses[i][1,3],8*obj_pybullet_poses[i][0,3]))
     for i in range(len(edges)):
         dot.add_edge(edges[i][0], edges[i][1])
     
-    dot.add_node('cam', pos='%f,%f!' % (-10*camera.info['extrinsics'][1,3],10*camera.info['extrinsics'][0,3]))    
+    dot.add_node('cam', pos='%f,%f!' % (-8*camera.info['extrinsics'][1,3],8*camera.info['extrinsics'][0,3]))    
+    cam_edges = visible_set
+    cam_pose = (-8*camera.info['extrinsics'][1,3],8*camera.info['extrinsics'][0,3])
+
     for node_i in visible_set:
         dot.add_edge(node_i, 'cam')
 
     dot.layout()
     dot.draw("graph.png", format="png")
-    img = mpimg.imread('graph.png')
-    plt.clf()
-    plt.imshow(img)
-    plt.show()
-    plt.pause(0.0001)
+    import cv2
+    img = cv2.imread("graph.png")
+    # img = mpimg.imread('graph.png')
+    # plt.clf()
+    # plt.imshow(img)
+    # plt.show()
+    # plt.pause(0.0001)
+    size = img.shape
+    desired_height = 640
+    print('size: ', size)
+    img = cv2.resize(img, (int(640/size[0]*size[1]), 640))
+    cv2.imwrite('occ-graph.png', img)
+    return nodes, node_poses, edges, cam_pose, cam_edges
 
 def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj_ids, move_obj_id, camera, pid):
-    plt.ion()
-
     dot = pgv.AGraph(directed=True)
     # move each object to faraway and capture depth image, seg image, then move back
     translation_z = 10.0
@@ -286,12 +325,12 @@ def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj
         if nodes[i] == move_obj_id:
             color = 'seagreen'
 
-        dot.add_node(nodes[i], pos='%f,%f!' % (-10*obj_pybullet_poses[i][1,3],10*obj_pybullet_poses[i][0,3]),
+        dot.add_node(nodes[i], pos='%f,%f!' % (-8*obj_pybullet_poses[i][1,3],8*obj_pybullet_poses[i][0,3]),
                      fillcolor=color, style='filled')
     for i in range(len(edges)):
         dot.add_edge(edges[i][0], edges[i][1])
 
-    dot.add_node('cam', pos='%f,%f!' % (-25*camera.info['extrinsics'][1,3],25*camera.info['extrinsics'][0,3]))    
+    dot.add_node('cam', pos='%f,%f!' % (-8*camera.info['extrinsics'][1,3],8*camera.info['extrinsics'][0,3]))    
 
 
     # dot.add_node('cam', pos='%f,%f!' % (-10*camera.info['extrinsics'][1,3],10*camera.info['extrinsics'][0,3]))    
@@ -309,3 +348,34 @@ def update_occlusion_graph(obj_ids, obj_pybullet_poses, moved_obj_ids, valid_obj
     plt.pause(0.1)
 
 
+
+def update_occlusion_graph_color(nodes, node_poses, edges, cam_pose, cam_edges, moved_nodes, current_node, fname):
+    dot = pgv.AGraph(directed=True)
+    # move each object to faraway and capture depth image, seg image, then move back
+    
+    for i in range(len(nodes)):
+        if nodes[i] == current_node:
+            color = 'seagreen'
+        elif nodes[i] in moved_nodes:
+            color = 'lightpink'
+        else:
+            color = 'white'
+        dot.add_node(nodes[i], pos='%f,%f!' % (node_poses[i][0],node_poses[i][1]),
+                     fillcolor=color, style='filled')
+    for i in range(len(edges)):
+        dot.add_edge(edges[i][0], edges[i][1])
+    
+    dot.add_node('cam', pos='%f,%f!' % (-8*cam_pose[0], cam_pose[1]))    
+    for node_i in cam_edges:
+        dot.add_edge(node_i, 'cam')
+
+    dot.layout()
+    dot.draw("graph.png", format="png")
+    import cv2
+    img = cv2.imread("graph.png")
+
+    size = img.shape
+    desired_height = 640
+    print('size: ', size)
+    img = cv2.resize(img, (int(640/size[0]*size[1]), 640))
+    cv2.imwrite(fname, img)

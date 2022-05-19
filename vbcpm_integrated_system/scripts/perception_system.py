@@ -586,3 +586,23 @@ class PerceptionSystem():
         label the object segmented image so that 
         """
         pass
+
+    def sample_pcd(self, mask, n_sample=10):
+        # sample voxels in te mask
+        # obtain sample in one voxel cell
+        grid_sample = np.random.uniform(low=[0,0,0], high=[1,1,1], size=(n_sample, 3))
+        voxel_x = self.voxel_x[mask]
+        voxel_y = self.voxel_y[mask]
+        voxel_z = self.voxel_z[mask]
+
+        total_sample = np.zeros((len(voxel_x), n_sample, 3))
+        total_sample = total_sample + grid_sample
+        total_sample = total_sample + np.array([voxel_x, voxel_y, voxel_z]).T.reshape(len(voxel_x),1,3)
+
+        total_sample = total_sample.reshape(-1, 3) * np.array(self.resol)
+
+        del voxel_x
+        del voxel_y
+        del voxel_z
+
+        return total_sample

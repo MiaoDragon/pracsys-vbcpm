@@ -28,9 +28,11 @@ import transformations as tf
 import pickle
 import json
 import sys
-
+from camera import Camera
+import cv2
+# import matplotlib.pyplot as plt
 class ExecutionSystem():
-    def __init__(self, load=None, scene_name='scene1'):
+    def __init__(self, load=None, scene_name='scene2'):
         # if load is None, then randomly generate a problem instance
         # otherwise use the load as a filename to load the previously generated problem
         # obj_type = input('using simple geometry? y or n: ').strip()
@@ -45,6 +47,7 @@ class ExecutionSystem():
             if obj_type == 'y':
                 scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, \
                     target_pose, target_pcd, target_obj_shape, target_obj_size = data
+                scene_f = 'scene2.json'
                 data = prob_gen.load_problem_level(scene_f, obj_poses, obj_pcds, obj_shapes, obj_sizes, 
                                     target_pose, target_pcd, target_obj_shape, target_obj_size)
                 pid, scene_f, robot, workspace, camera, \
@@ -56,6 +59,7 @@ class ExecutionSystem():
             else:
                 scene_f, obj_poses, obj_shapes, \
                     target_pose, target_obj_shape = data
+                scene_f = 'scene2.json'
                 data = prob_gen.load_problem_ycb(scene_f, obj_poses, obj_shapes, 
                                     target_pose, target_obj_shape)
                 pid, scene_f, robot, workspace, camera, \
@@ -143,9 +147,41 @@ class ExecutionSystem():
         self.rs_pub = rospy.Publisher('robot_state_publisher', JointState)
 
         # self.done_sub = rospy.Subscriber('done_msg', Int32, self.done_callback)
+        odg_nodes, odg_poses, odg_edges, odg_cam_pose, odg_cam_edges = construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
+        self.odg_nodes = odg_nodes
+        self.odg_poses = odg_poses
+        self.odg_edges = odg_edges
+        self.odg_cam_pose = odg_cam_pose
+        self.odg_cam_edges = odg_cam_edges
+        # cam_pos1 =np.array([0.9-0.3, -0.45, 1.36])
+        # look_at =np.array([1.37, 0, 1.03])
+        # cam_pos = (look_at - cam_pos1) * 0.14 + cam_pos1
 
-        # construct_occlusion_graph(obj_ids, obj_poses, camera, pid)
 
+        cam_pos =np.array([1.07, 0, 2.05])
+        look_at =np.array([1.07, 0, 1.0])
+
+
+        # cam_pos =np.array([-0.4, 0, 2])
+        # look_at =np.array([1.37, 0, 1.0])
+        
+        
+        # 1.3 center
+        # cam_pos=[0.39,0.0,1.3]
+        # look_at=[1.44,0,0.7]        
+
+        # cam_pos = (look_at - cam_pos1) * 0.14 + cam_pos1
+
+        self.vis_cam = Camera(cam_pos=cam_pos, look_at=look_at, fov=60, far=4, img_size=640)
+        rgb_img, depth_img, seg_img = self.vis_cam.sense(p.ER_BULLET_HARDWARE_OPENGL)
+        rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+        cv2.imwrite("demo_start_scene.png", rgb_img)
+
+        self.main_cam = Camera(img_size=640)
+        self.num_execute = -1
+        self.moved_objs = set()
+        self.current_node = None
+        self.prob_name = load[:-4]
     # def done_callback(self, msg):
     #     if msg.data == 1:
     #         # finished
@@ -208,6 +244,8 @@ class ExecutionSystem():
         PyBullet:
         if object attached, move arm and object at the same time
         """
+        self.current_node = None
+
         traj = req.trajectory # sensor_msgs/JointTrajectory
         ignored_obj_id = req.ignored_obj_id
         # joint_dict_list = []
@@ -224,11 +262,27 @@ class ExecutionSystem():
             obj_transform = tf.quaternion_matrix([ori[3],ori[0],ori[1],ori[2]])
             obj_transform[:3,3] = pos
 
+            self.moved_objs.add(self.attached_obj_id)
+            self.current_node = self.attached_obj_id
+
+
+        self.num_execute += 1
         for i in range(len(points)):
             pos = points[i].positions
             time_from_start = points[i].time_from_start
             joint_dict = {joint_names[j]: pos[j] for j in range(len(pos))}
             self.robot.set_joint_from_dict(joint_dict)
+
+            # dist = 0.0
+            # for name, val in joint_dict.items():
+            #     dist += (val - self.robot.init_joint_dict[name]) ** 2
+            # when the joint is close to initial joint, save image
+            # if np.sqrt(dist) <= 1e-3:
+            #     # close
+            #     rgb_img, depth_img, seg_img = self.vis_cam.sense()
+            #     rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+            #     cv2.imwrite("demo_scene_%d.png" % (int(time.time())), rgb_img)
+
 
             if self.attached_obj_id is not None:
                 new_transform = self.robot.get_tip_link_pose()
@@ -242,8 +296,35 @@ class ExecutionSystem():
                 if self.check_collision(ignored_obj_id):
                     num_collision += 1
                     print('collision happened.')
-        input('waiting...')
-            # rospy.sleep(0.03)
+
+
+            # capture image and save to file
+            # save file every some frequency
+            if i % 2 == 0 or i == len(points)-1:
+                import os
+                os.makedirs('demo-videos/%s/traj-vis/'%(self.prob_name), exist_ok=True)
+                os.makedirs('demo-videos/%s/traj-main/'%(self.prob_name), exist_ok=True)
+
+                fname = 'demo-videos/%s/traj-vis/%d-%d.png' % (self.prob_name, self.num_execute, i)
+                # vis cam
+                rgb_img, depth_img, seg_img = self.vis_cam.sense(p.ER_BULLET_HARDWARE_OPENGL)
+                rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+                cv2.imwrite(fname, rgb_img)
+
+
+                fname = 'demo-videos/%s/traj-main/%d-%d.png' % (self.prob_name, self.num_execute, i)
+                # vis cam
+                rgb_img, depth_img, seg_img = self.main_cam.sense(p.ER_BULLET_HARDWARE_OPENGL)
+                rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+                cv2.imwrite(fname, rgb_img)
+
+
+        os.makedirs('demo-videos/%s/odg/'%(self.prob_name), exist_ok=True)
+        fname = 'demo-videos/%s/odg/%d.png' % (self.prob_name, self.num_execute)
+        update_occlusion_graph_color(self.odg_nodes, self.odg_poses, self.odg_edges,
+                                    self.odg_cam_pose, self.odg_cam_edges, self.moved_objs, self.current_node,
+                                    fname)
+        # rospy.sleep(0.03)
         return ExecuteTrajectoryResponse(num_collision, True)
 
     def attach_object(self, req):
@@ -253,6 +334,10 @@ class ExecutionSystem():
         if req.attach == True:
             self.attached_obj_id = req.obj_id
         else:
+            # take a picture using the camera after action
+            rgb_img, depth_img, seg_img = self.vis_cam.sense()
+            rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+            cv2.imwrite("demo_detach_obj_%d.png" % (self.attached_obj_id), rgb_img)
             self.attached_obj_id = None
 
         return AttachObjectResponse(True)
