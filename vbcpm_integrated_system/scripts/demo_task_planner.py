@@ -169,7 +169,7 @@ class TaskPlanner():
         self.execution_calls += 1
 
         # * save the joint list
-        self.saved_joint_dict_list.append(joint_dict_list)
+        # self.saved_joint_dict_list.append(joint_dict_list)
 
         # * save the conservative volume of the object
         target_obj_id = self.move_obj_id

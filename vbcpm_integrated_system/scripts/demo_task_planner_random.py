@@ -26,7 +26,7 @@ from cv_bridge import CvBridge
 
 from rearrangement_plan import Rearrangement
 
-
+from camera import Camera
 """
 variant of the algorithm of a random algorithm. Provide two task planning methods:
 - random: randomly select an object to manipulate, and randomly select a placement pose
@@ -106,7 +106,18 @@ class TaskPlannerRandom():
 
         self.num_collision = 0
         
+        cam_pos =np.array([-0.4, 0, 2])
+        look_at =np.array([1.37, 0, 1.0])
 
+        # cam_pos=[0.39,0.0,1.3]
+        # look_at=[1.44,0,0.7]        
+
+        # cam_pos = (look_at - cam_pos1) * 0.14 + cam_pos1
+
+        self.vis_cam = Camera(cam_pos=cam_pos, look_at=look_at, fov=60, far=4, img_size=1280)
+
+        self.num_execute = -1
+        self.move_obj_id = -1
 
     def transform_obj_from_pose_both(self, pose, obj_id):
         prev_obj_voxel_pose = self.perception.objects[obj_id].transform
@@ -162,6 +173,120 @@ class TaskPlannerRandom():
 
         self.ros_time += time.time() - start_time
         self.execution_calls += 1
+
+
+        # * save the conservative volume of the object
+        target_obj_id = self.move_obj_id
+        obj = self.perception.objects[target_obj_id]
+
+        def visualize_obj(model):
+            # vis = o3d.visualization.Visualizer()
+            # vis.create_window()
+            pcd = obj.sample_pcd(model) / obj.resol
+            pcd_ind = np.floor(pcd).astype(int)
+            # Get vertex colors
+            rgb_vals = obj.color_tsdf[pcd_ind[:, 0], pcd_ind[:, 1], pcd_ind[:, 2]] / 255        
+            pcd = visualize_pcd(pcd, rgb_vals)
+            bbox = visualize_bbox(obj.voxel_x, obj.voxel_y, obj.voxel_z)
+            # voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, model, [1,0,0])
+
+            center = [obj.voxel_y.shape[0]/2, obj.voxel_y.shape[1]/2, obj.voxel_y.shape[2]/2]  # look_at target
+            eye = [-obj.voxel_y.shape[0]*1, obj.voxel_y.shape[1]/2, obj.voxel_y.shape[2]*2]  # camera position
+            up = [0, 0, 1]  # camera orientation
+
+            render = setup_render(center, eye, up)
+            # Show the original coordinate axes for comparison.
+            # X is red, Y is green and Z is blue.
+            render.scene.show_axes(True)
+            # Define a simple unlit Material.
+            # (The base color does not replace the arrows' own colors.)
+            # mtl = create_material([1.0, 1.0, 1.0, 0.01], 'defaultUnlit')
+            mtl2 = create_material([1.0, 1.0, 1.0, 1], 'defaultUnlit')
+            # render.scene.add_geometry("voxel", voxel, mtl)
+            render.scene.add_geometry("pcd", pcd, mtl2)
+            render.scene.add_geometry("bbox", bbox, mtl2)
+            # Read the image into a variable
+            img_o3d = render.render_to_image()
+            # Display the image in a separate window
+            # (Note: OpenCV expects the color in BGR format, so swop red and blue.)
+            # img_cv2 = cv2.cvtColor(np.array(img_o3d), cv2.COLOR_RGBA2BGRA)
+            # cv2.imshow("Preview window", img_cv2)
+            # cv2.waitKey()
+            return img_o3d
+
+        consv_img = visualize_obj(obj.get_conservative_model())
+        opt_img = visualize_obj(obj.get_optimistic_model())
+        # self.conserv_vol_list.append(consv_img)
+        # self.opt_vol_list.append(opt_img)
+
+
+        # * visualize occlusion space
+        # Get vertex colors
+        occlusion = self.perception.occlusion
+        bbox = visualize_bbox(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z)
+        # voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, self.prev_occluded, [1,0,0])
+        pcd = occlusion.sample_pcd(self.prev_occluded) / occlusion.resol
+
+
+
+        # o3d.visualization.draw_geometries([voxel])
+
+        center = [occlusion.voxel_y.shape[0]/2, occlusion.voxel_y.shape[1]/2, occlusion.voxel_y.shape[2]/2]  # look_at target
+        eye = [-occlusion.voxel_y.shape[0]*0.9, occlusion.voxel_y.shape[1]/2, occlusion.voxel_y.shape[2]*3]  # camera position
+        up = [0, 0, 1]  # camera orientation
+
+
+        render = setup_render(center, eye, up)
+        # Show the original coordinate axes for comparison.
+        # X is red, Y is green and Z is blue.
+        render.scene.show_axes(True)
+        # Define a simple unlit Material.
+        # (The base color does not replace the arrows' own colors.)
+        mtl = create_material([1.0, 0.0, 0.0, 1], 'defaultUnlit')
+        mtl2 = create_material([1.0, 1.0, 1.0, 1], 'defaultUnlit')
+        render.scene.add_geometry("bbox", bbox, mtl2)
+
+        if len(pcd) > 0:
+            pcd = visualize_pcd(pcd, np.array([[1,0,0] for i in range(len(pcd))]))
+            render.scene.add_geometry("pcd", pcd, mtl)
+
+        # Read the image into a variable
+        img_o3d = render.render_to_image()
+        # Display the image in a separate window
+        # (Note: OpenCV expects the color in BGR format, so swop red and blue.)
+        # img_cv2 = cv2.cvtColor(np.array(img_o3d), cv2.COLOR_RGBA2BGRA)
+        # cv2.imshow("Preview window", img_cv2)
+        # cv2.waitKey()
+        # self.occlude_vol_list.append(img_o3d)
+
+        # capture image and save to file
+        self.num_execute += 1
+        import os
+        os.makedirs('demo-videos/%d/%s/conrv-img/' % (self.algo_type,self.prob_name), exist_ok=True)
+        os.makedirs('demo-videos/%d/%s/opt-img/' % (self.algo_type,self.prob_name), exist_ok=True)
+        os.makedirs('demo-videos/%d/%s/occlude/' % (self.algo_type,self.prob_name), exist_ok=True)
+
+        fname = 'demo-videos/%d/%s/conrv-img/%d.png' % (self.prob_name, self.num_execute)
+        # vis cam
+        img_cv2 = cv2.cvtColor(np.array(consv_img), cv2.COLOR_RGBA2BGRA)
+        cv2.imwrite(fname, img_cv2)
+
+        fname = 'demo-videos/%d/%s/opt-img/%d.png' % (self.prob_name, self.num_execute)
+        img_cv2 = cv2.cvtColor(np.array(opt_img), cv2.COLOR_RGBA2BGRA)
+        cv2.imwrite(fname, img_cv2)
+
+
+        fname = 'demo-videos/%d/%s/occlude/%d.png' % (self.prob_name, self.num_execute)
+        img_cv2 = cv2.cvtColor(np.array(img_o3d), cv2.COLOR_RGBA2BGRA)
+        cv2.imwrite(fname, img_cv2)
+
+        # plt.imshow()
+        # save the occlusion of the scene
+
+
+
+
+
     def attach_obj(self, obj_id):
         """
         call execution_system to attach the object
@@ -240,8 +365,8 @@ class TaskPlannerRandom():
         self.perception_calls += 1
 
     def sense_object(self, obj_id, camera, robot_ids, component_ids):
-        color_img, depth_img, seg_img = self.get_image()
         start_time = time.time()
+        color_img, depth_img, seg_img = self.get_image()
         self.perception.sense_object(obj_id, color_img, depth_img, seg_img, 
                                     self.camera, [self.robot.robot_id], self.workspace.component_ids)
         self.perception_time += time.time() - start_time
@@ -1552,7 +1677,9 @@ class TaskPlannerRandom():
             # Terminate when the entire space has been observed???
             # TODO: need to visualize to make sure workspace does not cause problems
             # TODO: also visualize in our planner if the space becomes empty at convergence
-            if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or time.time()-start_time > self.timeout:
+            spent_time = time.time() - start_time - self.ros_time
+
+            if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or spent_time > self.timeout:
                 print('self.prev_occluded.sum: ', self.prev_occluded.sum())
                 print('moved_objects: ', len(moved_objects))
                 print('num_obj: ', self.num_obj)
@@ -1565,26 +1692,6 @@ class TaskPlannerRandom():
                 print('number of executed actions: ', self.num_executed_actions)
                 print('running time: ', time.time() - start_time, 's')
 
-                import pickle
-                f = open('random-' + self.prob_name + '-trial-' + str(self.trial_num) + '-result.pkl', 'wb')
-                res_dict = {}
-                res_dict['num_reconstructed_objs'] = len(moved_objects)
-                res_dict['num_collision'] = self.num_collision
-                res_dict['running_time'] = running_time
-                res_dict['num_executed_actions'] = self.num_executed_actions
-                res_dict['perception_time'] = self.perception_time
-                res_dict['motion_planning_time'] = self.motion_planning_time + self.rearrange_planner.motion_planning_time
-                res_dict['pose_generation_time'] = self.pose_generation_time + self.rearrange_planner.pose_generation_time
-                res_dict['rearrange_time'] = self.rearrange_time
-                res_dict['ros_time'] = self.ros_time
-                res_dict['perception_calls'] = self.perception_calls
-                res_dict['motion_planning_calls'] = self.motion_planning_calls + self.rearrange_planner.motion_planning_calls
-                res_dict['pose_generation_calls'] = self.pose_generation_calls + self.rearrange_planner.pose_generation_calls
-                res_dict['rearrange_calls'] = self.rearrange_calls
-                res_dict['execution_calls'] = self.execution_calls
-                res_dict['final_occluded_volume'] = self.prev_occluded.sum()
-                pickle.dump(res_dict, f)
-                f.close()
                 return
 
             obj_start_pose_dict = {}
@@ -1656,40 +1763,13 @@ class TaskPlannerRandom():
             # Terminate when the entire space has been observed???
             # TODO: need to visualize to make sure workspace does not cause problems
             # TODO: also visualize in our planner if the space becomes empty at convergence
-            if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or time.time() - start_time > self.timeout:
+            spent_time = time.time() - start_time - self.ros_time
+            if (self.prev_occluded).sum() == 0 or len(moved_objects) == self.num_obj or spent_time > self.timeout:
                 print('self.prev_occluded.sum: ', self.prev_occluded.sum())
                 print('moved_objects: ', len(moved_objects))
                 print('num_obj: ', self.num_obj)
                 print('time: ', time.time() - start_time)
                 print('timeout: ', self.timeout)
-
-
-                running_time = time.time() - start_time
-                print('#############Finished##############')
-                print('number of reconstructed objects: ', len(moved_objects))
-                print('number of executed actions: ', self.num_executed_actions)
-                print('running time: ', time.time() - start_time, 's')
-
-                import pickle
-                f = open('multistep-lookahead-' + self.prob_name + '-trial-' + str(self.trial_num) + '-result.pkl', 'wb')
-                res_dict = {}
-                res_dict['num_reconstructed_objs'] = len(moved_objects)
-                res_dict['num_collision'] = self.num_collision
-                res_dict['running_time'] = running_time
-                res_dict['num_executed_actions'] = self.num_executed_actions
-                res_dict['perception_time'] = self.perception_time
-                res_dict['motion_planning_time'] = self.motion_planning_time + self.rearrange_planner.motion_planning_time
-                res_dict['pose_generation_time'] = self.pose_generation_time + self.rearrange_planner.pose_generation_time
-                res_dict['rearrange_time'] = self.rearrange_time
-                res_dict['ros_time'] = self.ros_time
-                res_dict['perception_calls'] = self.perception_calls
-                res_dict['motion_planning_calls'] = self.motion_planning_calls + self.rearrange_planner.motion_planning_calls
-                res_dict['pose_generation_calls'] = self.pose_generation_calls + self.rearrange_planner.pose_generation_calls
-                res_dict['rearrange_calls'] = self.rearrange_calls
-                res_dict['execution_calls'] = self.execution_calls
-                res_dict['final_occluded_volume'] = self.prev_occluded.sum()
-                pickle.dump(res_dict, f)
-                f.close()
                 return
 
             obj_start_pose_dict = {}

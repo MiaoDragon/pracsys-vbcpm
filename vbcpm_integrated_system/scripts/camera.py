@@ -93,22 +93,22 @@ class Camera():
             # depth is far value
 
 
-            # corners = np.array([[0,0],[0,img_size-1],[img_size-1,img_size-1] ,[img_size-1,0]])  # 4x2
-            # depth = 1.2
-            # fx = cam_intrinsics[0][0]
-            # fy = cam_intrinsics[1][1]
-            # cx = cam_intrinsics[0][2]
-            # cy = cam_intrinsics[1][2]
-            # transformed_corners = np.zeros((len(corners),3))
-            # transformed_corners[:,0] = (corners[:,1] - cx) / fx * depth
-            # transformed_corners[:,1] = (corners[:,0] - cy) / fy * depth
-            # transformed_corners[:,2] = depth
-            # # transform into world frame
-            # transformed_corners = cam_extrinsics[:3,:3].dot(transformed_corners.T).T + cam_extrinsics[:3,3]
-            # for i in range(len(transformed_corners)):
-            #     p.addUserDebugLine(lineFromXYZ=cam_pos, lineToXYZ=transformed_corners[i], lineColorRGB=[0,0,0],lineWidth=0.01)
-            #     p.addUserDebugLine(lineFromXYZ=transformed_corners[i], lineToXYZ=transformed_corners[(i+1)%len(transformed_corners)],
-            #                         lineColorRGB=[0,0,0],lineWidth=0.002)
+            corners = np.array([[0,0],[0,img_size-1],[img_size-1,img_size-1] ,[img_size-1,0]])  # 4x2
+            depth = 1.2
+            fx = cam_intrinsics[0][0]
+            fy = cam_intrinsics[1][1]
+            cx = cam_intrinsics[0][2]
+            cy = cam_intrinsics[1][2]
+            transformed_corners = np.zeros((len(corners),3))
+            transformed_corners[:,0] = (corners[:,1] - cx) / fx * depth
+            transformed_corners[:,1] = (corners[:,0] - cy) / fy * depth
+            transformed_corners[:,2] = depth
+            # transform into world frame
+            transformed_corners = cam_extrinsics[:3,:3].dot(transformed_corners.T).T + cam_extrinsics[:3,3]
+            for i in range(len(transformed_corners)):
+                p.addUserDebugLine(lineFromXYZ=cam_pos, lineToXYZ=transformed_corners[i], lineColorRGB=[0,0,0],lineWidth=0.01)
+                p.addUserDebugLine(lineFromXYZ=transformed_corners[i], lineToXYZ=transformed_corners[(i+1)%len(transformed_corners)],
+                                    lineColorRGB=[0.3,0.3,0.3],lineWidth=0.002)
 
         else:
             self.vid = None
@@ -156,7 +156,7 @@ class Camera():
         return rgb_img, depth_img, seg_img, obj_poses, target_obj_pose
 
 
-    def sense(self):
+    def sense(self, renderer=p.ER_TINY_RENDERER):
         """
         sense the environment. If an object is seen, give the pose.
         return the pose
@@ -165,7 +165,8 @@ class Camera():
             width=self.info['img_size'],
             height=self.info['img_size'],
             viewMatrix=self.info['view_mat'],
-            projectionMatrix=self.info['proj_mat'])
+            projectionMatrix=self.info['proj_mat'],
+            renderer=renderer)
         # cv2.imshow('camera_rgb', rgb_img)
         depth_img = depth_img / self.info['factor']
         far = self.info['far']

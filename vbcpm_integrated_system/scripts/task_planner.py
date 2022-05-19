@@ -224,8 +224,8 @@ class TaskPlanner():
         self.perception_calls += 1
 
     def sense_object(self, obj_id, camera, robot_ids, component_ids):
-        start_time = time.time()
         color_img, depth_img, seg_img = self.get_image()
+        start_time = time.time()
         self.perception.sense_object(obj_id, color_img, depth_img, seg_img, 
                                     self.camera, [self.robot.robot_id], self.workspace.component_ids)
         self.perception_time += time.time() - start_time
