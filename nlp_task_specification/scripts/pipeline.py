@@ -247,15 +247,18 @@ class Pipeline():
         obj_ind = self.name2ind[obj_name]
         obj_id = self.obj_ids[obj_ind]
         res_grid = self.free_space_grid(obj_ind)
-        xyzposes = random.sample(res_grid, min(10, len(res_grid)))
-        res = self.planner.place(
-            f'Obj_{obj_id}',
-            xyzposes,
-            v_scale=0.35,
-            a_scale=1.0,
-            grasping_group=self.prev_arm + "_hand",
-            group_name=self.prev_arm + "_arm",
-        )
+        xyzposes = random.sample(res_grid, min(20, len(res_grid)))
+        if len(xyzposes) > 0:
+            res = self.planner.place(
+                f'Obj_{obj_id}',
+                xyzposes,
+                v_scale=0.35,
+                a_scale=1.0,
+                grasping_group=self.prev_arm + "_hand",
+                group_name=self.prev_arm + "_arm",
+            )
+        else:
+            res = False
         if res is not True:
             print(f"Failed to place '{obj_name}'!")
             self.planner.go_to_rest_pose()

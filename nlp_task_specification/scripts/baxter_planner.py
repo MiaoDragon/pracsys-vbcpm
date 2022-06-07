@@ -553,7 +553,7 @@ class BaxterPlanner(Planner):
             ".",
             file=sys.stderr
         )
-        if fraction < 0.5:
+        if fraction < 0.3:
             # return -fraction
             print("Skipping Approach. Dropping Object instead!", file=sys.stderr)
         else:
