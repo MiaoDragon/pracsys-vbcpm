@@ -1,14 +1,23 @@
+from re import S
 import numpy as np
 import pybullet as p
 import transformations as tf
 import time
 
 class Camera():
-    def __init__(self):
+    def __init__(self, cam_pos=[0.39,0.0,1.3], look_at=[1.44,0,0.7], fov=90, far=1.2, img_size=320, visualize=False):
         # TODO: parameterize the camera position
-        cam_pos = np.array([0.39, 0., 1.3])
-        look_at = np.array([1.44, 0., 0.7])
-        up_vec = np.array([cam_pos[2]-look_at[2], 0., look_at[0]-cam_pos[0]])
+        # cam_pos = np.array([0.39, 0., 1.3])
+        # look_at = np.array([1.44, 0., 0.7])
+        cam_pos = np.array(cam_pos)
+        look_at = np.array(look_at)
+        
+        if cam_pos[1] == 0.0 and look_at[1] == 0.0:
+            up_vec = np.array([cam_pos[2]-look_at[2], 0., look_at[0]-cam_pos[0]])
+        else:
+            s = np.array([cam_pos[1]-look_at[1], look_at[0]-cam_pos[0], 0])
+            up_vec = -np.cross(cam_pos, s)
+
         # up_vec = np.array([1.25-0.58, 0., 1.35-0.35])
 
         view_mat = p.computeViewMatrix(
@@ -20,10 +29,10 @@ class Camera():
         # https://stackoverflow.com/questions/60430958/understanding-the-view-and-projection-matrix-from-pybullet
         # https://stackoverflow.com/questions/39992968/how-to-calculate-field-of-view-of-the-camera-from-camera-intrinsic-matrix
         # https://github.com/bulletphysics/bullet3/blob/master/examples/SharedMemory/PhysicsClientC_API.cpp#L4372
-        fov = 90
-        img_size = 320
+        # fov = 90
+        # img_size = 320
         near = 0.01
-        far = 1.2
+        # far = 1.2
         proj_mat = p.computeProjectionMatrixFOV(
             fov=fov,
             aspect=1,
@@ -55,6 +64,7 @@ class Camera():
         cam_intrinsics = [[focal, 0, img_size/2],
                         [0, focal, img_size/2],
                         [0, 0, 1.]]
+
         cam_extrinsics = T_mat  # cam_extrinsics: {world}T{cam}
         self.info = {}
         self.info['view_mat'] = view_mat
@@ -69,6 +79,39 @@ class Camera():
         self.info['pos'] = cam_pos
         self.info['look_at'] = look_at
 
+        if visualize:
+            # visualize the camera in the scene: shoot rays to represent the visible range
+            vid = p.createVisualShape(shapeType=p.GEOM_SPHERE, radius=0.01,
+                                      rgbaColor=[0,0,0,1])
+            bid = p.createMultiBody(baseVisualShapeIndex=vid, basePosition=cam_pos)
+            self.bid = bid
+            # vid = p.addUserDebugPoints(pointPositions=cam_pos, pointColorsRGB=[1,0,0,1], pointSize=0.01)
+            # self.vid = vid
+            # draw lines to the far point to represent the visible regions of the camera
+            # compute the four corners using image size
+            # the pixel location is defined to be [0, 0], [0, img_size-1], [img_size-1, 0], [img_size-1, img_size-1]
+            # depth is far value
+
+
+            corners = np.array([[0,0],[0,img_size-1],[img_size-1,img_size-1] ,[img_size-1,0]])  # 4x2
+            depth = 1.2
+            fx = cam_intrinsics[0][0]
+            fy = cam_intrinsics[1][1]
+            cx = cam_intrinsics[0][2]
+            cy = cam_intrinsics[1][2]
+            transformed_corners = np.zeros((len(corners),3))
+            transformed_corners[:,0] = (corners[:,1] - cx) / fx * depth
+            transformed_corners[:,1] = (corners[:,0] - cy) / fy * depth
+            transformed_corners[:,2] = depth
+            # transform into world frame
+            transformed_corners = cam_extrinsics[:3,:3].dot(transformed_corners.T).T + cam_extrinsics[:3,3]
+            for i in range(len(transformed_corners)):
+                p.addUserDebugLine(lineFromXYZ=cam_pos, lineToXYZ=transformed_corners[i], lineColorRGB=[0,0,0],lineWidth=0.01)
+                p.addUserDebugLine(lineFromXYZ=transformed_corners[i], lineToXYZ=transformed_corners[(i+1)%len(transformed_corners)],
+                                    lineColorRGB=[0.3,0.3,0.3],lineWidth=0.002)
+
+        else:
+            self.vid = None
     def sense_with_perceive(self, obj_pcds, target_obj_pcd, obj_ids, target_obj_id):
         """
         sense the environment. If an object is seen, give the pose.
@@ -113,7 +156,7 @@ class Camera():
         return rgb_img, depth_img, seg_img, obj_poses, target_obj_pose
 
 
-    def sense(self):
+    def sense(self, renderer=p.ER_TINY_RENDERER):
         """
         sense the environment. If an object is seen, give the pose.
         return the pose
@@ -122,7 +165,8 @@ class Camera():
             width=self.info['img_size'],
             height=self.info['img_size'],
             viewMatrix=self.info['view_mat'],
-            projectionMatrix=self.info['proj_mat'])
+            projectionMatrix=self.info['proj_mat'],
+            renderer=renderer)
         # cv2.imshow('camera_rgb', rgb_img)
         depth_img = depth_img / self.info['factor']
         far = self.info['far']

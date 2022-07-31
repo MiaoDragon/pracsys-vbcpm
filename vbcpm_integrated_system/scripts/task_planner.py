@@ -5,7 +5,7 @@ integrate with other components
 from perception_system import PerceptionSystem
 from planning_system import PlanningSystem
 import pose_generation
-import rearrangement_plan
+# import rearrangement_plan
 import pipeline_utils
 from visual_utilities import *
 
@@ -24,9 +24,14 @@ from vbcpm_integrated_system.srv import ExecuteTrajectory, AttachObject
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from cv_bridge import CvBridge
 
+from rearrangement_plan import Rearrangement
+
 class TaskPlanner():
-    def __init__(self, scene_name):
+    def __init__(self, scene_name, prob_name, trial_num):
         self.planning_system = PlanningSystem(scene_name)
+        self.prob_name = prob_name
+        self.trial_num = trial_num
+
         workspace = self.planning_system.workspace
         workspace_low = workspace.region_low
         workspace_high = workspace.region_high
@@ -63,7 +68,28 @@ class TaskPlanner():
         self.bridge = CvBridge()
         self.attached_obj = None
 
+
+        self.perception_time = 0.0
+        self.motion_planning_time = 0.0
+        self.pose_generation_time = 0.0
+        self.ros_time = 0.0 # communication to execution scene
+        self.rearrange_time = 0.0
+
+        self.perception_calls = 0
+        self.motion_planning_calls = 0
+        self.pose_generation_calls = 0
+        self.execution_calls = 0
+        self.rearrange_calls = 0
+
+
         self.pipeline_sim()
+
+        self.rearrange_planner = Rearrangement()
+
+        self.num_executed_actions = 0
+
+        self.num_collision = 0
+        
 
 
     def transform_obj_from_pose_both(self, pose, obj_id):
@@ -72,11 +98,15 @@ class TaskPlanner():
         self.perception.objects[obj_id].update_transform_from_relative(transform)  # set transform
 
 
-    def execute_traj(self, joint_dict_list, duration=0.001):
+    def execute_traj(self, joint_dict_list, ignored_obj_id=-1, duration=0.001):
         """
         call execution_system to execute the trajectory
         if an object has been attached, update the object model transform at the end
         """
+        if len(joint_dict_list) == 0 or len(joint_dict_list) == 1:
+            return
+        
+        start_time = time.time()
 
         # convert joint_dict_list to JointTrajectory
         traj = JointTrajectory()
@@ -96,10 +126,12 @@ class TaskPlanner():
             points.append(point)
         traj.points = points
 
-        rospy.wait_for_service('execute_trajectory')
+        rospy.wait_for_service('execute_trajectory', timeout=10)
         try:
             execute_trajectory = rospy.ServiceProxy('execute_trajectory', ExecuteTrajectory)
-            resp1 = execute_trajectory(traj)
+            resp1 = execute_trajectory(traj, ignored_obj_id)
+            self.num_collision += resp1.num_collision
+            # print('number of collision: ', self.num_collision)
             # update object pose using the last joint angle if an object is attached
             if self.attached_obj is not None:
                 start_pose = self.robot.get_tip_link_pose(joint_dict_list[0])
@@ -112,48 +144,72 @@ class TaskPlanner():
         except rospy.ServiceException as e:
             print("Service call failed: %s"%e)
 
-
+        self.ros_time += time.time() - start_time
+        self.execution_calls += 1
     def attach_obj(self, obj_id):
         """
         call execution_system to attach the object
         """
-        rospy.wait_for_service('attach_object')
+        start_time = time.time()
+        rospy.wait_for_service('attach_object', timeout=10)
         try:
             attach_object = rospy.ServiceProxy('attach_object', AttachObject)
             resp1 = attach_object(True, self.perception.data_assoc.obj_ids_reverse[obj_id])
             self.attached_obj = obj_id
         except rospy.ServiceException as e:
             print("Service call failed: %s"%e)
-
+        self.ros_time += time.time() - start_time
+        self.execution_calls += 1
     def detach_obj(self):
         """
         call execution_system to detach the object
+        UPDATE April 14, 2022:
+        each action is finished with a detach action. So we count
+        how many detach is called, this will indicate how many actions
+        are performed
         """
-        rospy.wait_for_service('attach_object')
+        start_time = time.time()
+
+        rospy.wait_for_service('attach_object', timeout=10)
         try:
             attach_object = rospy.ServiceProxy('attach_object', AttachObject)
             resp1 = attach_object(False, -1)
             self.attached_obj = None
+            self.num_executed_actions += 1
+
         except rospy.ServiceException as e:
             print("Service call failed: %s"%e)
-
+        self.ros_time += time.time() - start_time
+        self.execution_calls += 1
     def get_image(self):
         print('waiting for message...')
-        color_img = rospy.wait_for_message('rgb_image', Image)
-        depth_img = rospy.wait_for_message('depth_image', Image)
-        seg_img = rospy.wait_for_message('seg_image', Image)
+        start_time = time.time()
+        # rospy.sleep(0.2)
+
+        color_img = rospy.wait_for_message('rgb_image', Image, timeout=10)
+        depth_img = rospy.wait_for_message('depth_image', Image, timeout=10)
+        seg_img = rospy.wait_for_message('seg_image', Image, timeout=10)
 
 
         color_img = self.bridge.imgmsg_to_cv2(color_img, 'passthrough')
         depth_img = self.bridge.imgmsg_to_cv2(depth_img, 'passthrough')
         seg_img = self.bridge.imgmsg_to_cv2(seg_img, 'passthrough')
 
+        self.ros_time += time.time() - start_time
+        self.execution_calls += 1
+
+        # visualize the images
+        # cv2.imshow('img', color_img)
+        # print('Press space...')
+        # cv2.waitKey()
 
         return color_img, depth_img, seg_img
 
     def pipeline_sim(self):
         # sense & perceive
+        # wait for image to update
         color_img, depth_img, seg_img = self.get_image()
+        start_time = time.time()
         self.perception.pipeline_sim(color_img, depth_img, seg_img, self.camera, 
                                     [self.robot.robot_id], self.workspace.component_ids)
 
@@ -164,10 +220,16 @@ class TaskPlanner():
         self.prev_occluded_dict = self.perception.filtered_occluded_dict
         self.prev_occupied_dict = self.perception.occupied_dict_t
 
+        self.perception_time += time.time() - start_time
+        self.perception_calls += 1
+
     def sense_object(self, obj_id, camera, robot_ids, component_ids):
         color_img, depth_img, seg_img = self.get_image()
+        start_time = time.time()
         self.perception.sense_object(obj_id, color_img, depth_img, seg_img, 
                                     self.camera, [self.robot.robot_id], self.workspace.component_ids)
+        self.perception_time += time.time() - start_time
+        self.perception_calls += 1
 
 
     def mask_pcd_with_padding(self, occ_filter, pcd_indices, padding=1):
@@ -263,9 +325,11 @@ class TaskPlanner():
                 occupied_filter = self.mask_pcd_xy_with_padding(occupied_filter, pcd, padding)
                 del pcd
 
-
+        start_time = time.time()
         self.planning_system.motion_planner.set_collision_env(self.perception.occlusion, 
                                             occlusion_filter, occupied_filter)
+        self.motion_planning_time += time.time() - start_time
+        # self.motion_planning_calls += 1
         del occlusion_filter
         del occupied_filter
 
@@ -308,14 +372,16 @@ class TaskPlanner():
         """
         move the valid object out of the workspace, sense it and the environment, and place back
         """
-
+        start_time = time.time()
         self.planning_system.motion_planner.clear_octomap()
-
+        self.motion_planning_time += time.time() - start_time
+        # self.motion_planning_calls += 1
+        print('handling object: ', self.perception.data_assoc.obj_ids_reverse[move_obj_idx])
         start_time = time.time()
         _, suction_poses_in_obj, suction_joints = self.pre_move(move_obj_idx, moved_objects)
         end_time = time.time()
         print('pre_move takes time: ', end_time - start_time)
-
+        print('number of generated suction poses: ', len(suction_poses_in_obj))
         if len(suction_joints) == 0:  # no valid suction joint now
             return False
 
@@ -341,9 +407,11 @@ class TaskPlanner():
         start_time = time.time()
         intermediate_pose, suction_poses_in_obj, suction_joints, intermediate_joints = \
             pipeline_utils.generate_intermediate_poses(**planning_info)
+        end_time = time.time()
+        self.pose_generation_time += end_time - start_time
+        self.pose_generation_calls += 1
         del planning_info
         # generate intermediate pose for the obj with valid suction pose
-        end_time = time.time()
         print('generate_intermediate_poses takes time: ', end_time - start_time)
 
 
@@ -351,6 +419,7 @@ class TaskPlanner():
         # (plan to suction pose, intermediate pose and sense pose do not change collision env)
         self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=3)
 
+        print('number of suction_poses_in_obj: ', len(suction_poses_in_obj))
         for i in range(len(suction_poses_in_obj)):
             suction_pose_in_obj = suction_poses_in_obj[i]
             suction_joint = suction_joints[i]
@@ -362,6 +431,8 @@ class TaskPlanner():
                         suction_pose_in_obj, suction_joint, self.robot.joint_dict)  # internally, plan_to_pre_pose, pre_to_suction, lift up
 
             end_time = time.time()
+            self.motion_planning_time += end_time - start_time
+            self.motion_planning_calls += 1
             print('plan_to_suction_pose takes time: ', end_time - start_time)
 
 
@@ -378,20 +449,18 @@ class TaskPlanner():
                                         suction_pose_in_obj, x_dist, intermediate_pose, intermediate_joint,
                                         lift_joint_dict_list[-1])
             end_time = time.time()
+            self.motion_planning_time += end_time - start_time
+            self.motion_planning_calls += 1
             print('plan_to_intermediate_pose takes time: ', end_time - start_time)
 
             if len(retreat_joint_dict_list) == 0:
                 continue
 
-            self.execute_traj(pick_joint_dict_list, duration=0.3)
+            self.execute_traj(pick_joint_dict_list, self.perception.data_assoc.obj_ids_reverse[move_obj_idx], duration=0.3)
             self.attach_obj(move_obj_idx)
             self.execute_traj(lift_joint_dict_list + retreat_joint_dict_list)
-
-            start_time = time.time()
-            self.pipeline_sim()  # sense the environmnet
             
-            end_time = time.time()
-            print('pipeline_sim takes time: ', end_time - start_time)
+            self.pipeline_sim()  # sense the environmnet
 
             for k in range(6):
                 start_time = time.time()
@@ -410,11 +479,17 @@ class TaskPlanner():
                 # TODO: segmentation now does not have access to PyBullet seg id
                 planning_info['camera'] = self.camera
                 # self.motion_planner.clear_octomap()
+                start_time = time.time()
                 sense_pose, selected_tip_in_obj, tip_pose, start_joint_angles, joint_angles = \
                     pipeline_utils.sample_sense_pose(**planning_info)
-
+                self.pose_generation_time += time.time() - start_time
+                self.pose_generation_calls += 1
+                print('sample sense pose takes time: ', time.time() - start_time)
+                start_time = time.time()
                 obj_sense_joint_dict_list = self.planning_system.obj_sense_plan(self.perception.objects[move_obj_idx], joint_angles, suction_pose_in_obj)
                 end_time = time.time()
+                self.motion_planning_time += end_time - start_time
+                self.motion_planning_calls += 1                
                 print('obj_sense_plan takes time: ', end_time - start_time)
 
                 self.execute_traj(obj_sense_joint_dict_list)
@@ -426,11 +501,6 @@ class TaskPlanner():
 
                 if len(obj_sense_joint_dict_list) == 0:
                     continue
-
-                start_time = time.time()
-                # self.pipeline_sim()
-                end_time = time.time()
-                print('pipeline_sim takes time: ', end_time - start_time)
 
                 # rotate the object 360 degrees so we get a better sensing
                 ul = self.robot.upper_lim[7]
@@ -482,7 +552,6 @@ class TaskPlanner():
             planning_info['suction_joint_dict_list'] = pick_joint_dict_list
             planning_info['obj'] = self.perception.objects[move_obj_idx]
 
-            start_time = time.time()
 
             occlusion_filter = np.zeros(self.prev_occluded.shape).astype(bool)
             # occlusion_filter = np.array(self.prev_occluded)
@@ -496,16 +565,18 @@ class TaskPlanner():
 
             self.planning_system.motion_planner.set_collision_env(self.perception.occlusion, 
                                                                 occlusion_filter, (self.prev_occupied_label>0)&(self.prev_occupied_label!=move_obj_idx+1))
-
+            start_time = time.time()        
             placement_joint_dict_list, reset_joint_dict_list = self.planning_system.plan_to_placement_pose(**planning_info)
-            del planning_info
             end_time = time.time()
+            self.motion_planning_time += end_time - start_time
+            self.motion_planning_calls += 1
+            del planning_info
             print('plan_to_placement_pose takes time: ', end_time - start_time)
 
             self.execute_traj(placement_joint_dict_list)
             self.detach_obj()
 
-            self.execute_traj(reset_joint_dict_list)
+            self.execute_traj(reset_joint_dict_list, self.perception.data_assoc.obj_ids_reverse[move_obj_idx])
             return True
         return False
 
@@ -538,6 +609,7 @@ class TaskPlanner():
         return blocking_mask
 
     def obtain_visibility_blocking_mask(self, target_obj):
+        start_time = time.time()
         camera_extrinsics = self.camera.info['extrinsics']
         cam_transform = np.linalg.inv(camera_extrinsics)
         camera_intrinsics = self.camera.info['intrinsics']
@@ -563,6 +635,8 @@ class TaskPlanner():
         vis_mask = np.zeros(self.perception.occlusion.voxel_x.shape).astype(bool)
         if max_i <= 0 or max_j <= 0:
             # not in the camera view
+            self.perception_time += time.time() - start_time
+            self.perception_calls += 1
             del pcd
             del transformed_pcd
             del depth
@@ -610,6 +684,8 @@ class TaskPlanner():
             cam_to_voxel_depth = cam_to_voxel_depth.reshape(occlusion.voxel_x.shape)
             vis_mask = vis_mask | ((cam_to_voxel_depth - voxel_depth <= 0.) & (voxel_depth > 0.) & valid_mask)
 
+        self.perception_calls += 1
+        self.perception_time += time.time() - start_time
         # print(occluded.astype(int).sum() / valid_mask.astype(int).sum())
         del cam_to_voxel_depth
         del voxel_depth
@@ -622,19 +698,20 @@ class TaskPlanner():
 
         return vis_mask
 
-    def pre_move(self, target_obj_i, moved_objects):
-        """
-        before moving the object, check reachability constraints. Rearrange the blocking objects
-        """
-        # * check reachability constraints by sampling grasp poses
+
+    def pre_move_compute_valid_joints(self, target_obj_i, moved_objects, blocking_mask):
         target_obj = self.perception.objects[target_obj_i]
         occlusion = self.perception.occlusion
+        start_time = time.time()
         valid_pts, valid_orientations, valid_joints = \
-            pose_generation.grasp_pose_generation(target_obj_i, target_obj, 
+            pose_generation.grasp_pose_generation(target_obj, 
                                                   self.robot, self.workspace, 
-                                                  self.perception.occlusion, 
-                                                  self.prev_occlusion_label, self.prev_occupied_label, sample_n=20)
-
+                                                  self.perception.occlusion.transform, 
+                                                  self.prev_occlusion_label>0, self.perception.occlusion.resol, sample_n=20)
+        self.pose_generation_time += time.time() - start_time
+        self.pose_generation_calls += 1
+        print('number of grasp poses obtained: ')
+        print(len(valid_pts))
         # * check each sampled pose to see if it's colliding with any objects. Create blocking object set
         total_blocking_objects = []
         total_blocking_object_nums = []
@@ -645,44 +722,17 @@ class TaskPlanner():
         res_orientations = []
         res_joints = []
 
-        # get the target object pcd
-        target_pcd = target_obj.sample_optimistic_pcd()
-        target_pcd = target_obj.transform[:3,:3].dot(target_pcd.T).T + target_obj.transform[:3,3]
-        target_pcd = occlusion.world_in_voxel_rot.dot(target_pcd.T).T + occlusion.world_in_voxel_tran
-        target_pcd = target_pcd / occlusion.resol
-
-        # vis_pcd = visualize_pcd(target_pcd, [0,1,0])
-
-        target_pcd = np.floor(target_pcd).astype(int)
-        valid_filter = (target_pcd[:,0]>=0) & (target_pcd[:,0]<occlusion.voxel_x.shape[0]) & \
-                        (target_pcd[:,1]>=0) & (target_pcd[:,1]<occlusion.voxel_x.shape[1]) & \
-                        (target_pcd[:,2]>=0) & (target_pcd[:,2]<occlusion.voxel_x.shape[2])
-        target_pcd = target_pcd[valid_filter]
-        # obtain the mask for objects that are hiding in front of target
-        # x <= pcd[:,0], y == pcd[:,1], z == pcd[:,2]
-        blocking_mask = np.zeros(occlusion.voxel_x.shape).astype(bool)
-        blocking_mask[target_pcd[:,0],target_pcd[:,1],target_pcd[:,2]] = 1
-        blocking_mask = blocking_mask[::-1,:,:].cumsum(axis=0)
-        blocking_mask = blocking_mask[::-1,:,:] > 0
-
-        # * add visibility blocking constraint to the mask
-        # NOTE: we only need this if the target object is actually hidden by others
-        # if the target object is not in the key, then it means it should be hidden
-        if target_obj_i in self.perception.current_hide_set and len(self.perception.current_hide_set[target_obj_i]) > 0:
-            blocking_mask = blocking_mask | self.obtain_visibility_blocking_mask(target_obj)
+        # # visualize the perception
+        # v_pcds = []
+        # for obj_id, obj in self.perception.objects.items():
+        #     v_pcd = obj.sample_conservative_pcd()
+        #     v_pcd = obj.transform[:3,:3].dot(v_pcd.T).T + obj.transform[:3,3]
+        #     v_pcd = occlusion.world_in_voxel_rot.dot(v_pcd.T).T + occlusion.world_in_voxel_tran
+        #     v_pcd = v_pcd / occlusion.resol
+        #     v_pcds.append(visualize_pcd(v_pcd, [1,0,0]))
+        # o3d.visualization.draw_geometries(v_pcds)
 
 
-        target_pcd = target_obj.sample_conservative_pcd()
-        target_pcd = target_obj.transform[:3,:3].dot(target_pcd.T).T + target_obj.transform[:3,3]
-        target_pcd = occlusion.world_in_voxel_rot.dot(target_pcd.T).T + occlusion.world_in_voxel_tran
-        target_pcd = target_pcd / occlusion.resol
-        target_pcd = np.floor(target_pcd).astype(int)
-        valid_filter = (target_pcd[:,0]>=0) & (target_pcd[:,0]<occlusion.voxel_x.shape[0]) & \
-                        (target_pcd[:,1]>=0) & (target_pcd[:,1]<occlusion.voxel_x.shape[1]) & \
-                        (target_pcd[:,2]>=0) & (target_pcd[:,2]<occlusion.voxel_x.shape[2])
-        target_pcd = target_pcd[valid_filter]
-        # remove interior of target_pcd
-        blocking_mask = self.mask_pcd_xy_with_padding(blocking_mask, target_pcd, padding=1)
 
         for i in range(len(valid_orientations)):
             # obtain robot pcd at the given joint
@@ -728,6 +778,18 @@ class TaskPlanner():
                     if occupied_i[transformed_rpcd[:,0],transformed_rpcd[:,1],transformed_rpcd[:,2]].sum() > 0:
                         blocking_objects.append(obj_i)
                         valid = False
+                        # print('blocking with object ', self.perception.data_assoc.obj_ids_reverse[obj_i])
+                        # if obj_i in moved_objects:
+                        #     print('blocking object is moved before')
+                        # else:
+                        #     print('blocking object has not been moved')
+
+                # v_voxel = visualize_voxel(self.perception.occlusion.voxel_x, self.perception.occlusion.voxel_y, self.perception.occlusion.voxel_z,
+                #                 occupied, [0,0,1])
+                # v_pcd = visualize_pcd(transformed_rpcd, [1,0,0])
+                # o3d.visualization.draw_geometries([v_voxel, v_pcd])
+                
+
 
             # * make sure there is no object in the straight-line path
             for obj_i, obj in self.perception.objects.items():
@@ -753,12 +815,89 @@ class TaskPlanner():
                 joint_indices.append(i)
 
         if len(res_orientations) > 0:
-            return res_pts, res_orientations, res_joints
+            return res_pts, res_orientations, res_joints, 1, \
+                joint_indices, total_blocking_object_nums, total_blocking_objects, transformed_rpcds
 
 
         if len(total_blocking_objects) == 0:
-            # failure
-            return [], [], []
+            # failure since all blocking object sets include at least one unmoved objects
+            return [], [], [], 0, [], [], [], []
+
+        return valid_pts, valid_orientations, valid_joints, 0, \
+            joint_indices, total_blocking_object_nums, total_blocking_objects, transformed_rpcds
+    
+
+    def pre_move(self, target_obj_i, moved_objects):
+        """
+        before moving the object, check reachability constraints. Rearrange the blocking objects
+        """
+        # * check reachability constraints by sampling grasp poses
+        target_obj = self.perception.objects[target_obj_i]
+        occlusion = self.perception.occlusion
+
+        # get the target object pcd
+        target_pcd = target_obj.sample_optimistic_pcd()
+        target_pcd = target_obj.transform[:3,:3].dot(target_pcd.T).T + target_obj.transform[:3,3]
+        target_pcd = occlusion.world_in_voxel_rot.dot(target_pcd.T).T + occlusion.world_in_voxel_tran
+        target_pcd = target_pcd / occlusion.resol
+
+        # vis_pcd = visualize_pcd(target_pcd, [0,1,0])
+
+        target_pcd = np.floor(target_pcd).astype(int)
+        valid_filter = (target_pcd[:,0]>=0) & (target_pcd[:,0]<occlusion.voxel_x.shape[0]) & \
+                        (target_pcd[:,1]>=0) & (target_pcd[:,1]<occlusion.voxel_x.shape[1]) & \
+                        (target_pcd[:,2]>=0) & (target_pcd[:,2]<occlusion.voxel_x.shape[2])
+        target_pcd = target_pcd[valid_filter]
+        # obtain the mask for objects that are hiding in front of target
+        # x <= pcd[:,0], y == pcd[:,1], z == pcd[:,2]
+        blocking_mask = np.zeros(occlusion.voxel_x.shape).astype(bool)
+        blocking_mask[target_pcd[:,0],target_pcd[:,1],target_pcd[:,2]] = 1
+        blocking_mask = blocking_mask[::-1,:,:].cumsum(axis=0)
+        blocking_mask = blocking_mask[::-1,:,:] > 0
+
+        # * add visibility blocking constraint to the mask
+        # NOTE: Update: we need to compute the visibility blocking mask no matter what, because we need
+        # to ensure other objects won't be rearranged and block the target object again
+
+        blocking_mask = blocking_mask | self.obtain_visibility_blocking_mask(target_obj)
+
+
+        target_pcd = target_obj.sample_conservative_pcd()
+        target_pcd = target_obj.transform[:3,:3].dot(target_pcd.T).T + target_obj.transform[:3,3]
+        target_pcd = occlusion.world_in_voxel_rot.dot(target_pcd.T).T + occlusion.world_in_voxel_tran
+        target_pcd = target_pcd / occlusion.resol
+        target_pcd = np.floor(target_pcd).astype(int)
+        valid_filter = (target_pcd[:,0]>=0) & (target_pcd[:,0]<occlusion.voxel_x.shape[0]) & \
+                        (target_pcd[:,1]>=0) & (target_pcd[:,1]<occlusion.voxel_x.shape[1]) & \
+                        (target_pcd[:,2]>=0) & (target_pcd[:,2]<occlusion.voxel_x.shape[2])
+        target_pcd = target_pcd[valid_filter]
+        # remove interior of target_pcd
+        blocking_mask = self.mask_pcd_xy_with_padding(blocking_mask, target_pcd, padding=1)
+
+
+        # # # # visualize the blocking mask
+        # vis_voxels = []
+        # for obj_i, obj in self.perception.objects.items():
+        #     occupied_i = self.prev_occupied_dict[obj_i]
+        #     if occupied_i.sum() == 0:
+        #         continue
+        #     vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, occupied_i, [0,0,1])
+        #     vis_voxels.append(vis_voxel)
+
+        # if blocking_mask.sum() > 0:
+        #     vis_voxel = visualize_voxel(occlusion.voxel_x, occlusion.voxel_y, occlusion.voxel_z, blocking_mask, [1,0,0])
+        #     o3d.visualization.draw_geometries(vis_voxels + [vis_voxel,vis_pcd])
+        # else:
+        #     o3d.visualization.draw_geometries(vis_voxels + [vis_pcd])
+
+
+        valid_pts, valid_orientations, valid_joints, status, \
+            joint_indices, total_blocking_object_nums, \
+            total_blocking_objects, transformed_rpcds \
+                = self.pre_move_compute_valid_joints(target_obj_i, moved_objects, blocking_mask)
+        
+        if (status == 1) or (len(valid_pts) == 0):
+            return valid_pts, valid_orientations, valid_joints
 
         # * find the set of blocking objects with the minimum # of objects
         idx = np.argmin(total_blocking_object_nums)
@@ -818,18 +957,26 @@ class TaskPlanner():
 
         # * rearrange the blocking objects
         res = self.rearrange(blocking_objects, moveable_objs, collision_voxel, robot_collision_voxel)
-
         del collision_voxel
         del robot_collision_voxel
-        del blocking_mask
         del target_pcd
         del valid_filter
 
         if res:
             # update the occlusion and occupied space so motion planning won't be messed up
             self.pipeline_sim()
-            return [valid_pt], [valid_orientation], [valid_joint]
+            # do another check for blocking objects since we may reveal more grasp poses
+            valid_pts, valid_orientations, valid_joints, status, \
+                joint_indices, total_blocking_object_nums, \
+                total_blocking_objects, transformed_rpcds \
+                    = self.pre_move_compute_valid_joints(target_obj_i, moved_objects, blocking_mask)
+            del blocking_mask
+            if status == 1:
+                return [valid_pt] + valid_pts, [valid_orientation] + valid_orientations, [valid_joint] + valid_joints
+            else:
+                return [valid_pt], [valid_orientation], [valid_joint]
         else:
+            del blocking_mask
             return [], [], []
 
 
@@ -846,27 +993,31 @@ class TaskPlanner():
 
         plt.ion()
         # plt.figure(figsize=(10,10))
-
+        start_time = time.time()
         searched_objs, transfer_trajs, searched_trajs, reset_traj = \
-            rearrangement_plan.rearrangement_plan(moved_objs, obj_pcds, obj_start_poses, moveable_objs, 
+            self.rearrange_planner.rearrangement_plan(moved_objs, obj_pcds, obj_start_poses, moveable_objs, 
                                             moveable_obj_pcds, moveable_obj_start_poses,
                                             collision_voxel, robot_collision_voxel, 
                                             self.perception.occlusion.transform, 
                                             self.perception.occlusion.resol,
                                             self.robot, self.workspace, self.perception.occlusion,
-                                            self.planning_system.motion_planner)
+                                            self.planning_system.motion_planner,
+                                            n_iter=10)
+        self.rearrange_time += time.time() - start_time
+        self.rearrange_calls += 1
+
         success = False
         if searched_objs is not None:
             total_obj_ids = obj_ids + moveable_obj_ids
             # execute the rearrangement plan
             for i in range(len(searched_objs)):
                 move_obj_idx = total_obj_ids[searched_objs[i]]
-                self.execute_traj(transfer_trajs[i], duration=0.3)
+                self.execute_traj(transfer_trajs[i], self.perception.data_assoc.obj_ids_reverse[move_obj_idx], duration=0.3)
                 self.attach_obj(move_obj_idx)
                 self.execute_traj(searched_trajs[i])
                 self.detach_obj()
             # reset
-            self.execute_traj(reset_traj)
+            self.execute_traj(reset_traj, self.perception.data_assoc.obj_ids_reverse[move_obj_idx])
             success = True
         else:
             success = False
@@ -887,7 +1038,8 @@ class TaskPlanner():
         moved_objects = []
         iter_i = 0
 
-        valid_objects = []        
+        valid_objects = []
+        start_time = time.time()
         while True:
             print('iteration: ', iter_i)
             gc.collect()
@@ -895,10 +1047,14 @@ class TaskPlanner():
             active_objs = []
             for obj_id, obj in self.perception.objects.items():
                 # check if the object becomes active when the hiding object have all been moved
-                if len(obj.obj_hide_set - set(moved_objects)) == 0:
-                    obj.set_active()
-                obj_hide_list = list(obj.obj_hide_set)
+                # if len(obj.obj_hide_set - set(moved_objects)) == 0:
+                #     obj.set_active()
+                # UPDATE: we are now using image to decide if an object is active or not
 
+                obj_hide_list = list(obj.obj_hide_set)
+                print('object ', self.perception.data_assoc.obj_ids_reverse[obj_id], ' hiding list: ')
+                for k in range(len(obj_hide_list)):
+                    print(self.perception.data_assoc.obj_ids_reverse[obj_hide_list[k]])
                 if obj.active:
                     active_objs.append(obj_id)
 
@@ -908,6 +1064,47 @@ class TaskPlanner():
             # valid_objects = list(valid_objects)
 
             # move_obj_idx = np.random.choice(valid_objects)
+            print('valid object list: ')
+            for k in range(len(valid_objects)):
+                print(self.perception.data_assoc.obj_ids_reverse[valid_objects[k]])
+            # Terminated when there are no valid_objects left
+            if len(valid_objects) == 0:
+                running_time = time.time() - start_time
+                print('#############Finished##############')
+                print('number of reconstructed objects: ', len(moved_objects))
+                print('number of executed actions: ', self.num_executed_actions)
+                print('running time: ', time.time() - start_time, 's')
+
+                import pickle
+                f = open(self.prob_name + '-trial-' + str(self.trial_num) + '-result.pkl', 'wb')
+                res_dict = {}
+                res_dict['num_reconstructed_objs'] = len(moved_objects)
+                res_dict['num_collision'] = self.num_collision
+                res_dict['running_time'] = running_time
+                res_dict['num_executed_actions'] = self.num_executed_actions
+                res_dict['perception_time'] = self.perception_time
+                res_dict['motion_planning_time'] = self.motion_planning_time
+                res_dict['pose_generation_time'] = self.pose_generation_time
+                res_dict['rearrange_time'] = self.rearrange_time
+                res_dict['ros_time'] = self.ros_time
+                res_dict['perception_calls'] = self.perception_calls
+                res_dict['motion_planning_calls'] = self.motion_planning_calls
+                res_dict['pose_generation_calls'] = self.pose_generation_calls
+                res_dict['rearrange_calls'] = self.rearrange_calls
+                res_dict['execution_calls'] = self.execution_calls
+                res_dict['rearrange_motion_planning_time'] = self.rearrange_planner.motion_planning_time
+                res_dict['rearrange_pose_generation_time'] = self.rearrange_planner.pose_generation_time
+                res_dict['rearrange_motion_planning_calls'] = self.rearrange_planner.motion_planning_calls
+                res_dict['rearrange_pose_generation_calls'] = self.rearrange_planner.pose_generation_calls
+                res_dict['final_occluded_volume'] = self.prev_occluded.sum()
+                pickle.dump(res_dict, f)
+                f.close()
+                # from std_msgs.msg import Int32
+                # done_pub = rospy.Publisher('done_msg', Int32)
+                # done_pub.publish(Int32(1))
+
+                return
+
             move_obj_idx = valid_objects[0]
 
             # if iter_i < len(orders):
@@ -926,14 +1123,16 @@ class TaskPlanner():
             self.pipeline_sim()
 
 
-
+import sys
 def main():
     rospy.init_node("task_planner")
     rospy.sleep(1.0)
     scene_name = 'scene1'
-
-    task_planner = TaskPlanner(scene_name)
-    input('ENTER to start planning...')
+    prob_name = sys.argv[1]
+    trial_num = int(sys.argv[2])
+    
+    task_planner = TaskPlanner(scene_name, prob_name, trial_num)
+    # input('ENTER to start planning...')
     task_planner.run_pipeline()
 
 if __name__ == "__main__":

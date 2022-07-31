@@ -23,9 +23,11 @@ class Workspace():
             component['pose']['pos'] = np.array(component['pose']['pos']) + np.array(base_pos)
             pos = np.array(component['pose']['pos'])
             ori = component['pose']['ori']  # x y z w
-
+            alpha = 1.0
+            if component_name == 'shelf_top':
+                alpha = 0.5
             col_id = p.createCollisionShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, physicsClientId=pybullet_id)
-            vis_id = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, physicsClientId=pybullet_id)
+            vis_id = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=shape/2, rgbaColor=[160/255, 107/255, 84/255, alpha], physicsClientId=pybullet_id)
             comp_id = p.createMultiBody(baseCollisionShapeIndex=col_id, baseVisualShapeIndex=vis_id,
                                         basePosition=pos, baseOrientation=ori, physicsClientId=pybullet_id)
             self.component_id_dict[component_name] = comp_id

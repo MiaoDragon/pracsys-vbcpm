@@ -38,7 +38,7 @@ import pose_generation
 DEBUG = False
 
 class ObjectModel():
-    def __init__(self, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03):
+    def __init__(self, obj_id, pybullet_id, xmin, ymin, zmin, xmax, ymax, zmax, resol, scale=0.03, use_color=False):
         """
         initialize the object model to be the bounding box containing the conservative volume of the object
 
@@ -73,11 +73,16 @@ class ObjectModel():
 
         self.tsdf = np.zeros((size_x,size_y,size_z))  # default value: -1
         self.tsdf_count = np.zeros((size_x,size_y,size_z)).astype(int)  # count how many times it's observed
+        self.use_color = use_color
+        if use_color:
+            self.color_tsdf = np.zeros((size_x,size_y,size_z,3))
+        else:
+            self.color_tsdf = None
         self.voxel_x, self.voxel_y, self.voxel_z = np.indices(self.tsdf.shape).astype(float)
 
         self.scale = scale
         self.max_v = scale#1.0
-        self.min_v = -scale#-1.0 
+        self.min_v = -scale * 1.1  # increase this so our optimistic model can have more volume
         self.active = 0
         # 0 means this object might be hidden by others. 1 means we can safely move the object now
         # we will only expand the object tsdf volume when it's hidden. Once it's active we will keep
@@ -98,7 +103,10 @@ class ObjectModel():
         self.world_in_voxel_tran = self.world_in_voxel[:3,3]
 
         self.obj_hide_set = set()  # list of objects that are hiding this object
-    
+        self.obj_id = obj_id 
+        self.pybullet_id = pybullet_id
+        self.depth_img = None
+
     def update_obj_hide_set(self, obj_hide_set):
         # given the observed obj_hide_set, update it
         self.obj_hide_set = self.obj_hide_set.union(set(obj_hide_set))
@@ -184,9 +192,15 @@ class ObjectModel():
 
         new_tsdf = np.zeros((new_size_x, new_size_y, new_size_z))
         new_tsdf_count = np.zeros((new_size_x, new_size_y, new_size_z)).astype(int)
-
+            
         new_tsdf[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.tsdf
         new_tsdf_count[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.tsdf_count
+
+        if self.use_color:
+            new_color_tsdf = np.zeros((new_size_x, new_size_y, new_size_z,3))
+            new_color_tsdf[nx:nx+self.size_x,ny:ny+self.size_y,nz:nz+self.size_z] = self.color_tsdf
+            self.color_tsdf = new_color_tsdf
+
 
         self.xmin = new_xmin
         self.ymin = new_ymin
@@ -210,7 +224,7 @@ class ObjectModel():
         self.voxel_x, self.voxel_y, self.voxel_z = np.indices(self.tsdf.shape).astype(float)
 
     
-    def update_tsdf(self, depth_img, color_img, camera_extrinsics, camera_intrinsics):
+    def update_tsdf(self, depth_img, color_img, camera_extrinsics, camera_intrinsics, visualize=False):
         """
         given the *segmented* depth image belonging to the object, update tsdf
         if new parts are seen, expand the model (this only happens when this object is inactive, or hidden initially)
@@ -243,6 +257,12 @@ class ObjectModel():
         valid_mask = (transformed_voxels[:,0] >= 0) & (transformed_voxels[:,0] < len(depth_img[0])) & \
                         (transformed_voxels[:,1] >= 0) & (transformed_voxels[:,1] < len(depth_img))
         voxel_depth[valid_mask] = depth_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0]]
+
+        if self.use_color:
+            voxel_color = np.zeros((len(transformed_voxels),3))
+            voxel_color[valid_mask] = color_img[transformed_voxels[valid_mask][:,1], transformed_voxels[valid_mask][:,0], :3]
+            voxel_color = voxel_color.reshape(list(self.voxel_x.shape)+[3])
+
         valid_mask = valid_mask.reshape(self.voxel_x.shape)
         voxel_depth = voxel_depth.reshape(self.voxel_x.shape)
 
@@ -254,14 +274,38 @@ class ObjectModel():
         tsdf = (voxel_depth - cam_to_voxel_depth)# * self.scale
         valid_space = (voxel_depth>0) & (tsdf > self.min_v) & valid_mask
 
+        # visualize the valid space against the entire space
+        if visualize:
+            vvoxel1 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, voxel_depth>0, [1,0,0])
+            vvoxel2 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, tsdf > self.min_v, [1,0,0])
+            vvoxel3 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, tsdf > self.min_v*1.5, [1,0,0])
+            vvoxel4 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, valid_space, [1,0,0])
+            vbox = visualize_bbox(self.voxel_x, self.voxel_y, self.voxel_z)
+            frame = visualize_coordinate_frame_centered()
+
+            o3d.visualization.draw_geometries([vvoxel1, vbox, frame])
+            o3d.visualization.draw_geometries([vvoxel2, vbox, frame])
+            o3d.visualization.draw_geometries([vvoxel3, vbox, frame])
+            o3d.visualization.draw_geometries([vvoxel4, vbox, frame])
+
+
+        # we don't want to update the TSDF value for hidden parts since it will affect previous TSDF value
+
         # print('tsdf: ')
         # print(((tsdf[valid_space]>self.min_v) & (tsdf[valid_space]<self.max_v)).astype(int).sum() / valid_space.astype(int).sum())
 
         self.tsdf[valid_space] = (self.tsdf[valid_space] * self.tsdf_count[valid_space] + tsdf[valid_space]) / (self.tsdf_count[valid_space] + 1)
+        if self.use_color:
+            self.color_tsdf[valid_space] = (self.color_tsdf[valid_space] * self.tsdf_count[valid_space].reshape((-1,1)) + voxel_color[valid_space]) / (self.tsdf_count[valid_space].reshape((-1,1)) + 1)
+            self.color_tsdf[self.color_tsdf > 255] = 255.0
+            self.color_tsdf[self.color_tsdf < 0] = 0
         self.tsdf_count[valid_space] = self.tsdf_count[valid_space] + 1
+
+
 
         self.tsdf[self.tsdf>self.max_v*1.1] = self.max_v*1.1
         self.tsdf[self.tsdf<self.min_v] = self.min_v
+        # self.tsdf[self.tsdf<self.min_v*1.1] = self.min_v*1.1
 
         # handle invalid space: don't update
         # invalid_space = ((voxel_depth <= 0) | (tsdf < self.min_v)) & valid_mask
@@ -367,6 +411,46 @@ class ObjectModel():
         # obtain the pcd of the conservative volume
         return self.sample_pcd(self.get_optimistic_model(), n_sample)
 
+    def get_conservative_surface(self, save_flag=0):
+        # obtain the conservative surface
+        from skimage import measure
+        verts = measure.marching_cubes(self.tsdf, level=0)[0]
+        verts_ind = np.round(verts).astype(int)
+        vert_mask = np.zeros(self.voxel_x.shape).astype(bool)
+        vert_mask[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]] = 1
+        # remove false surface
+        tsdf_count = self.tsdf_count[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]]
+        tsdf = self.tsdf[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]]
+        valid_idx = (tsdf_count > 0) & (tsdf < self.max_v)# & (tsdf > self.min_v)
+        verts_ind = verts_ind[valid_idx]
+        verts = verts[valid_idx]
+
+        vert_mask_after_valid = np.zeros(self.voxel_x.shape).astype(bool)
+        vert_mask_after_valid[verts_ind[:, 0], verts_ind[:, 1], verts_ind[:, 2]] = 1
+        
+        pcd = self.sample_pcd(vert_mask_after_valid) / self.resol
+        # voxel1 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, vert_mask, [0,0,1])
+        # voxel2 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, vert_mask_after_valid, [1,0,0])
+        # voxel3 = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, self.get_conservative_model(), [0,1,0])
+
+        # surface_cloud = surface_cloud.voxel_down_sample(voxel_size=voxel_size)
+        # o3d.visualization.draw_geometries([voxel1])
+        # o3d.visualization.draw_geometries([voxel2])
+        # o3d.visualization.draw_geometries([voxel1,voxel2,voxel3])
+        pcd_ind = np.floor(pcd).astype(int)
+        # Get vertex colors
+        rgb_vals = self.color_tsdf[pcd_ind[:, 0], pcd_ind[:, 1], pcd_ind[:, 2]] / 255
+        if save_flag:
+            pcd = visualize_pcd(pcd, rgb_vals)
+            bbox = visualize_bbox(self.voxel_x, self.voxel_y, self.voxel_z)
+            voxel = visualize_voxel(self.voxel_x, self.voxel_y, self.voxel_z, self.get_conservative_model(), [1,0,0])
+            # surface_cloud = surface_cloud.voxel_down_sample(voxel_size=voxel_size)
+            o3d.visualization.draw_geometries([pcd, bbox, voxel])#, voxel])
+            o3d.io.write_point_cloud("conservative_surface.pcd", pcd)
+            np.save("saved_tsdf.npy", self.tsdf)
+            np.save("saved_tsdf_count.npy", self.tsdf_count)
+            np.save("saved_tsdf_color.npy", self.color_tsdf)
+
     def get_center_frame(self, pcd):
         """
         get the rotation  C R O  (object frame relative to center frame)
@@ -399,15 +483,22 @@ class ObjectModel():
         """
         gx, gy, gz = np.gradient(self.tsdf)
         # visualize the gradient for optimistic volume
-        filter = self.get_optimistic_model()
+        if self.sensed:
+            filter = self.get_conservative_model()
+        else:
+            filter = self.get_optimistic_model()
+
         filtered_x = self.voxel_x[filter]
         filtered_y = self.voxel_y[filter]
         filtered_z = self.voxel_z[filter]
         filtered_pts = np.array([filtered_x, filtered_y, filtered_z]).T
-        filtered_g = np.array([gx[filter], gy[filter], gz[filter]]).T
+        filtered_g = np.array([gx[filter], gy[filter], gz[filter]]).T  # pointing from inside to outside (negative value to positive)
 
         # use the normal to move back the suction point
+        filtered_g = filtered_g / np.linalg.norm(filtered_g, axis=1).reshape((-1,1))
         filtered_pts = filtered_pts + filtered_g * 0.5
+        # use the TSDF value to shift the suction points. If TSDF > 0, we need to move inside, otherwise outside
+        filtered_pts = filtered_pts - filtered_g * self.tsdf[filter].reshape((-1,1))
         
 
         if DEBUG:
@@ -437,16 +528,205 @@ class ObjectModel():
                 arrows.append(arrow)
             o3d.visualization.draw_geometries(arrows+[pcd_v])    
 
+
+        # take only the ones that are on seen TSDFs
+        filter = (self.tsdf_count[filter] > 0)
+        filtered_pts = filtered_pts[filter]
+        filtered_g = filtered_g[filter]
+
         length = np.linalg.norm(filtered_g,axis=1)
         filtered_pts = filtered_pts[length>=1e-5]
         filtered_g = filtered_g[length>=1e-5]
         filtered_g = filtered_g / np.linalg.norm(filtered_g,axis=1).reshape(-1,1)
 
         return filtered_pts * self.resol, -filtered_g
+
+
+    def obtain_boundary(self, depth_img, seg_img, workspace_ids):
+        # obtain the boundary boolean mask (adjacent to parts that do not belong to this object)
+        # and unhidden boundary boolean mask (boundary boolean mask and have smaller depth)
+        # UPDATE: we want to consider robot hiding as well
+        obj_seg_filter = np.ones(seg_img.shape).astype(bool)
+        for wid in workspace_ids:
+            obj_seg_filter[seg_img==wid] = 0
+        # obj_seg_filter[seg_img==-1] = 0
+
+        workspace_filter = np.zeros(seg_img.shape).astype(bool)
+        for wid in workspace_ids:
+            workspace_filter[seg_img==wid] = 1
+        workspace_filter[seg_img==-1] = 1  # seg_img=-1 then the depth is not valid, so we include that as workspace
+
+        # for rid in robot_ids:
+        #     obj_seg_filter[seg_img==rid] = 0
+
+        # initialize boundary map
+        boundary_mp = np.zeros(seg_img.shape).astype(bool)
+        unhidden_boundary_mp = np.zeros(seg_img.shape).astype(bool)
+
+        # obtain indices of the segmented object
+        img_i, img_j = np.indices(seg_img.shape)
+        # check if the neighbor object is hiding this object
+        valid_1 = (img_i-1>=0) & (seg_img==self.obj_id)
+        unhidden_valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        # the neighbor object should be 
+        # 1. an object that is not the current object
+        # 2. workspace (considered as valid boundary)
+        filter1 = obj_seg_filter[img_i[valid_1]-1,img_j[valid_1]]  # this has excluded workspace
+        filter2 = (seg_img[img_i[valid_1]-1,img_j[valid_1]] != self.obj_id)
+        filter3 = workspace_filter[img_i[valid_1]-1,img_j[valid_1]]
+
+        depth_filtered = depth_img[img_i[valid_1]-1,img_j[valid_1]][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        seg_obj_filtered = seg_img[img_i[valid_1]-1,img_j[valid_1]][filter1&filter2]
+        obj_seg_filtered = unhidden_valid_filtered[filter1&filter2]  # keep a copy so we can back propagate the result
+
+        unhiding_seg_obj_filter = depth_filtered>seg_obj_depth_filtered
+        obj_seg_filtered[unhiding_seg_obj_filter] = 1
+        # backpropagate the result
+        unhidden_valid_filtered[filter1&filter2] = obj_seg_filtered
+        unhidden_valid_filtered[filter3] = 1  # workspace neighbors are automatically considered as boundary
+        valid_filtered[filter1&filter2] = 1
+        valid_filtered[filter3] = 1
+        unhidden_boundary_mp[valid_1] |= unhidden_valid_filtered
+        boundary_mp[valid_1] |= valid_filtered
         
 
+        valid_1 = (img_i+1<seg_img.shape[0]) & (seg_img==self.obj_id)
+        unhidden_valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+
+        # the neighbor object should be 
+        # 1. an object that is not the current object
+        # 2. workspace (considered as valid boundary)
+        filter1 = obj_seg_filter[img_i[valid_1]+1,img_j[valid_1]]  # this has excluded workspace
+        filter2 = (seg_img[img_i[valid_1]+1,img_j[valid_1]] != self.obj_id)
+        filter3 = workspace_filter[img_i[valid_1]+1,img_j[valid_1]]
+
+        depth_filtered = depth_img[img_i[valid_1]+1,img_j[valid_1]][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        seg_obj_filtered = seg_img[img_i[valid_1]+1,img_j[valid_1]][filter1&filter2]
+        obj_seg_filtered = unhidden_valid_filtered[filter1&filter2]  # keep a copy so we can back propagate the result
+
+        unhiding_seg_obj_filter = depth_filtered>seg_obj_depth_filtered
+        obj_seg_filtered[unhiding_seg_obj_filter] = 1
+        # backpropagate the result
+        unhidden_valid_filtered[filter1&filter2] = obj_seg_filtered
+        unhidden_valid_filtered[filter3] = 1  # workspace neighbors are automatically considered as boundary
+        valid_filtered[filter1&filter2] = 1
+        valid_filtered[filter3] = 1
+        unhidden_boundary_mp[valid_1] |= unhidden_valid_filtered
+        boundary_mp[valid_1] |= valid_filtered
 
 
+
+        valid_1 = (img_j-1>=0) & (seg_img==self.obj_id)
+        unhidden_valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+
+        # the neighbor object should be 
+        # 1. an object that is not the current object
+        # 2. workspace (considered as valid boundary)
+        filter1 = obj_seg_filter[img_i[valid_1],img_j[valid_1]-1]  # this has excluded workspace
+        filter2 = (seg_img[img_i[valid_1],img_j[valid_1]-1] != self.obj_id)
+        filter3 = workspace_filter[img_i[valid_1],img_j[valid_1]-1]
+
+        depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]-1][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        seg_obj_filtered = seg_img[img_i[valid_1],img_j[valid_1]-1][filter1&filter2]
+        obj_seg_filtered = unhidden_valid_filtered[filter1&filter2]  # keep a copy so we can back propagate the result
+
+        unhiding_seg_obj_filter = depth_filtered>seg_obj_depth_filtered
+        obj_seg_filtered[unhiding_seg_obj_filter] = 1
+        # backpropagate the result
+        unhidden_valid_filtered[filter1&filter2] = obj_seg_filtered
+        unhidden_valid_filtered[filter3] = 1  # workspace neighbors are automatically considered as boundary
+        valid_filtered[filter1&filter2] = 1
+        valid_filtered[filter3] = 1
+        unhidden_boundary_mp[valid_1] |= unhidden_valid_filtered
+        boundary_mp[valid_1] |= valid_filtered
+
+
+
+        valid_1 = (img_j+1<seg_img.shape[1]) & (seg_img==self.obj_id)
+        unhidden_valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        valid_filtered = np.zeros(boundary_mp[valid_1].shape).astype(bool)
+        # the neighbor object should be 
+        # 1. an object that is not the current object
+        # 2. workspace (considered as valid boundary)
+        filter1 = obj_seg_filter[img_i[valid_1],img_j[valid_1]+1]  # this has excluded workspace
+        filter2 = (seg_img[img_i[valid_1],img_j[valid_1]+1] != self.obj_id)
+        filter3 = workspace_filter[img_i[valid_1],img_j[valid_1]+1]
+
+        depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]+1][filter1&filter2]
+        seg_obj_depth_filtered = depth_img[img_i[valid_1],img_j[valid_1]][filter1&filter2]
+        seg_obj_filtered = seg_img[img_i[valid_1],img_j[valid_1]+1][filter1&filter2]
+        obj_seg_filtered = unhidden_valid_filtered[filter1&filter2]  # keep a copy so we can back propagate the result
+
+        unhiding_seg_obj_filter = depth_filtered>seg_obj_depth_filtered
+        obj_seg_filtered[unhiding_seg_obj_filter] = 1
+        # backpropagate the result
+        unhidden_valid_filtered[filter1&filter2] = obj_seg_filtered
+        unhidden_valid_filtered[filter3] = 1  # workspace neighbors are automatically considered as boundary
+        valid_filtered[filter1&filter2] = 1
+        valid_filtered[filter3] = 1
+        unhidden_boundary_mp[valid_1] |= unhidden_valid_filtered
+        boundary_mp[valid_1] |= valid_filtered
+
+
+        return boundary_mp, unhidden_boundary_mp
+
+            
+    def update_depth_belief(self, depth_img, seg_img, workspace_ids):
+        """
+        implement the object revealing process based on the segmentation and depth images
+        Since the object becomes fully revealed when all its parts have been seen. The union
+        of its parts will give us a full segmentation mask with depth values. boundary is found
+        when the next depth value is larger (behind this object). The object becomes fully revealed
+        when all its boundaries have been revealed.
+
+        TODO: visualize the boundnary and images
+        """
+        # integrate segmentation image
+        if self.depth_img is None:
+            self.depth_img = np.array(depth_img)
+            self.seg_img = np.array(seg_img)
+            self.seg_img[self.seg_img!=self.obj_id] = -1
+            self.seg_boundary = np.zeros(self.seg_img.shape).astype(bool)
+            self.seg_unhidden_boundary = np.zeros(self.seg_img.shape).astype(bool)
+            self.depth_img[self.seg_img!=self.obj_id] = 0
+            # add boundary check here
+            # first obtain boundary filter using concatenated seg_img and depth_img
+            boundary_mp, unhidden_boundary_mp = self.obtain_boundary(self.depth_img, self.seg_img, workspace_ids)
+            self.seg_boundary = boundary_mp
+            boundary_mp, unhidden_boundary_mp = self.obtain_boundary(depth_img, seg_img, workspace_ids)
+            self.seg_unhidden_boundary = self.seg_unhidden_boundary | unhidden_boundary_mp
+            
+        else:
+            # union mask
+            mask = (self.seg_img == self.obj_id) | (seg_img == self.obj_id)
+            self.seg_img[mask] = self.obj_id
+            self.depth_img[seg_img==self.obj_id] = depth_img[seg_img==self.obj_id]
+            # boundary
+            boundary_mp, unhidden_boundary_mp = self.obtain_boundary(self.depth_img, self.seg_img, workspace_ids)
+            self.seg_boundary = boundary_mp
+            boundary_mp, unhidden_boundary_mp = self.obtain_boundary(depth_img, seg_img, workspace_ids)
+            self.seg_unhidden_boundary = self.seg_unhidden_boundary | unhidden_boundary_mp
+
+        # import cv2
+        # cv2.imshow('depth', self.depth_img)
+        # cv2.imshow('boundary', self.seg_boundary.astype(float))
+        # cv2.imshow('unhidden_boundary', self.seg_unhidden_boundary.astype(float))
+        # # visualize the parts that are in the boundary but not revealed
+        # cv2.imshow('boundary but not unhidden', (self.seg_boundary & (~self.seg_unhidden_boundary)).astype(float))
+        # cv2.imshow('interior', ((self.seg_img==self.obj_id) & (~self.seg_boundary)).astype(float))
+        # cv2.waitKey()
+        # final check: the object becomes valid (revealed) when boundaries are all unhidden
+        if self.seg_boundary.sum() == (self.seg_boundary & self.seg_unhidden_boundary).sum():
+            # check if the interior of the object is not enough (the object is close to an edge)
+            if ((self.seg_img==self.obj_id) & (~self.seg_boundary)).sum() / (self.seg_img==self.obj_id).sum() >= 0.1:
+                print('enough has been seen for object ', self.pybullet_id, ' and it is now active')
+                self.set_active()
 
 def test():
     # test the module

@@ -21,7 +21,9 @@ class PlanningSystem():
         Create a PyBullet scene including workspace, robot and camera
         """
         # load scene definition file
-        pid = p.connect(p.GUI)
+        pid = p.connect(p.DIRECT)
+        # pid = p.connect(p.GUI)
+
         f = open(scene_name+".json", 'r')
         scene_dict = json.load(f)
 
@@ -84,8 +86,13 @@ class PlanningSystem():
         # lift up
         relative_tip_pose = np.eye(4)
         relative_tip_pose[:3,3] = np.array([0,0,0.05]) # lift up by 0.05
+        # print('#######################################')
+        # print('start joint angle: ')
+        # print(self.robot.joint_dict_to_vals(suction_joint_dict_list[-1]))
         joint_dict_list = self.motion_planner.straight_line_motion(suction_joint_dict_list[-1], obj.transform.dot(suction_pose_in_obj), 
                                                                 relative_tip_pose, self.robot, workspace=self.workspace)
+        # print('straight-line motion, len(joint_dict_list): ', len(joint_dict_list))
+        # input('waiting...')
         if len(joint_dict_list) == 0:
             return [], []
 
@@ -114,6 +121,9 @@ class PlanningSystem():
         # reset collision env: to remove the object to be moved
 
         # self.set_collision_env(list(self.prev_occluded_dict.keys()), [move_obj_idx], [move_obj_idx], padding=3)
+
+        if len(intermediate_joint_dict_list_1) == 0:
+            return []
         joint_dict_list = self.motion_planner.suction_with_obj_plan(intermediate_joint_dict_list_1[-1], suction_pose_in_obj, 
                                                                     intermediate_joint, self.robot, 
                                                                     obj)

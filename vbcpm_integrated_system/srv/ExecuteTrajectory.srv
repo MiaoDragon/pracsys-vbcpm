@@ -1,5 +1,7 @@
 # input: trajectory
 trajectory_msgs/JointTrajectory trajectory
+int32 ignored_obj_id
 ---
 # output: success or not
+int32 num_collision
 bool success

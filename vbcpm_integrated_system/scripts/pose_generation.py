@@ -8,7 +8,7 @@ import transformations as tf
 import pybullet as p
 from tqdm import trange
 
-def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_label, occupied_label, sample_n=10, result_n=20):
+def grasp_pose_generation(obj, robot, workspace, col_transform, col_voxel, col_resol, sample_n=10, result_n=20, visualize=False):
     """
     given the object pose and voxels, generate the grasp pose
     reference:
@@ -24,7 +24,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     """
     # suction_disc = np.arange(start=0.0,stop=0.06, step=0.005)[1:]
 
-    suction_disc = np.arange(start=0.0,stop=robot.suction_length, step=0.005)[1:]
+    suction_disc = np.arange(start=0.0,stop=robot.suction_length, step=0.002)[1:]
 
     # * sample points from the object voxels
     suction_pts, suction_normal = obj.get_surface_normal()  # normal is relative to the object frame
@@ -63,10 +63,74 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     other_suction_pts = suction_pts[collision_filter]
     other_suction_normal = suction_normal[collision_filter]
 
+    # select only above some height to ensure no collision with ground
+    height_filter = (filtered_suction_pts[:,2] >= 0.03)
+    # print("before applying height filter: number of pts: ", len(filtered_suction_pts))
+    filtered_suction_pts = filtered_suction_pts[height_filter]
+    filtered_suction_normal = filtered_suction_normal[height_filter]
+    # print("after applying height filter: number of pts: ", len(filtered_suction_pts))
+
+    
+
+
+
 
     # * transform the local grasp pose to global one using the object transform
     transformed_suction_pts = obj.transform[:3,:3].dot(filtered_suction_pts.T).T + obj.transform[:3,3]
     transformed_suction_normal = obj.transform[:3,:3].dot(filtered_suction_normal.T).T# + obj.transform[:3,3]
+
+    # select only poses that are 90 degrees within, or pointing downward
+    normal_filter = (transformed_suction_normal[:,0] > 0) & (transformed_suction_normal[:,2] <= 0.03)
+    # print("before applying normal filter: number of pts: ", len(transformed_suction_normal))
+    transformed_suction_pts = transformed_suction_pts[normal_filter]
+    transformed_suction_normal = transformed_suction_normal[normal_filter]
+    # print("after applying normal filter: number of pts: ", len(transformed_suction_normal))
+
+
+    # if len(transformed_suction_pts) == 0:
+
+    #     voxel1 = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, 
+    #                             (obj.tsdf_count >= 1) & (obj.tsdf < obj.max_v), [1,0,0])
+    #     voxel2 = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, 
+    #                             (obj.tsdf_count >= 1) & (obj.tsdf > obj.min_v), [0,0,1])
+    #     voxel3 = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, 
+    #                             obj.get_conservative_model(), [0,0,1])
+
+    #     o3d.visualization.draw_geometries([voxel1])
+    #     o3d.visualization.draw_geometries([voxel2])
+    #     o3d.visualization.draw_geometries([voxel3])
+
+    #     arrows = []
+    #     for i in range(len(filtered_suction_pts)):
+    #         arrow = visualize_arrow(scale=0.3, translation=filtered_suction_pts[i]/obj.resol, 
+    #                                 direction=-filtered_suction_normal[i], color=[0,1,0])
+    #         arrows.append(arrow)
+    #     # voxel_x, voxel_y, voxel_z = np.indices(col_voxel.shape)
+    #     pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
+    #     voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, 
+    #                             obj.get_optimistic_model(), [0,0,1])
+
+        
+    #     o3d.visualization.draw_geometries(arrows + [voxel])
+
+
+    if visualize:
+        arrows = []
+        transform = np.linalg.inv(col_transform)
+        vis_suction_pts = transform[:3,:3].dot(transformed_suction_pts.T).T + transform[:3,3]
+        vis_suction_normal = transform[:3,:3].dot(transformed_suction_normal.T).T
+        for i in range(len(vis_suction_pts)):
+            arrow = visualize_arrow(scale=0.3, translation=vis_suction_pts[i]/col_resol, 
+                                    direction=-vis_suction_normal[i], color=[0,1,0])
+            arrows.append(arrow)
+        voxel_x, voxel_y, voxel_z = np.indices(col_voxel.shape)
+        # pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
+        voxel = visualize_voxel(voxel_x, voxel_y, voxel_z, 
+                                col_voxel, [0,0,1])
+        o3d.visualization.draw_geometries(arrows + [voxel])
+
+
+
 
     
     transformed_suction_y = np.array(transformed_suction_normal)
@@ -93,8 +157,13 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
     transformed_suction_normal = transformed_suction_normal[selected_suction_pts]
     transformed_suction_y = transformed_suction_y[selected_suction_pts]
 
+    # filtered_suction_normal = filtered_suction_normal[selected_suction_pts]
+    # filtered_suction_pts = filtered_suction_pts[selected_suction_pts]
+    # vis_valid_pts = []
+    # vis_valid_normals = []
+
     # check collision using PyBullet: we need to open a new pybullet session to do so. Instead use MoveIt
-    for i in trange(len(transformed_suction_pts)):
+    for i in range(len(transformed_suction_pts)):
         # rotating the y axis to get several potential samples
         n_theta = 8
         d_theta = np.pi * 2 / n_theta
@@ -106,7 +175,7 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
             rot_mat[:3,:3] = np.array([suction_x, suction_y, transformed_suction_normal[i]]).T
             quat = tf.quaternion_from_matrix(rot_mat)  # w x y z
             valid, dof_joint_vals = robot.get_ik(robot.tip_link_name, transformed_suction_pts[i], [quat[1],quat[2],quat[3],quat[0]], 
-                                                robot.joint_vals, collision_check=True, workspace=workspace)
+                                                robot.joint_vals, collision_check=True, workspace=workspace, visualize=visualize)
             if not valid:
                 # ik failed. next
                 # print('ik not valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
@@ -125,7 +194,8 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
                 contacts = p.getClosestPoints(robot.robot_id, comp_id, distance=0.,physicsClientId=robot.pybullet_id)
                 if len(contacts):
                     collision = True
-                    break   
+                    # print('robot contact with workspace...')
+                    break
 
             robot.set_joints(prev_joint_vals)
 
@@ -142,6 +212,8 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
             valid_pts.append(transformed_suction_pts[i])
             valid_orientations.append(rot_mat)
             valid_joints.append(dof_joint_vals)
+            # vis_valid_pts.append(filtered_suction_pts[i])
+            # vis_valid_normals.append(filtered_suction_normal[i])            
             # print('found valid, i=%d/%d, j=%d/%d' % (i, len(transformed_suction_pts), j, n_theta))
     
     valid_poses_in_obj = valid_orientations
@@ -152,6 +224,28 @@ def grasp_pose_generation(obj_id, obj, robot, workspace, occlusion, occlusion_la
         valid_pts = [valid_pts[i] for i in valid_indices]
         valid_poses_in_obj = [valid_poses_in_obj[i] for i in valid_indices]
         valid_joints = [valid_joints[i] for i in valid_indices]
+        
+        # vis_valid_pts = [vis_valid_pts[i] for i in valid_indices]
+        # vis_valid_normals = [vis_valid_normals[i] for i in valid_indices]
+
+    # print('number of valid pts: ', len(valid_pts))
+    # print('pts: ')
+    # print(vis_valid_pts)
+    # print('normals: ')
+    # print(vis_valid_normals)
+    # # TODO: visualize the suction pose
+    # arrows = []
+    # for i in range(len(vis_valid_pts)):
+    #     arrow = visualize_arrow(scale=0.3, translation=vis_valid_pts[i]/obj.resol, 
+    #                             direction=-vis_valid_normals[i], color=[0,1,0])
+    #     arrows.append(arrow)
+    # # pcd = visualize_pcd(obj.sample_optimistic_pcd(), [0,0,1])
+    # voxel = visualize_voxel(obj.voxel_x, obj.voxel_y, obj.voxel_z, obj.get_optimistic_model(), [0,0,1])
+    # o3d.visualization.draw_geometries(arrows + [voxel])
+
+    # del arrows
+    # del voxel
+
 
     del valid_orientations
     del total_filter

@@ -245,7 +245,8 @@ class MotionPlanner():
 
         quat = tf.quaternion_from_matrix(suction_pose)  # w x y z
         prev_suction_joint = suction_joint
-        for i in range(n_step):
+        joint_vals.append(prev_suction_joint)
+        for i in range(1,n_step):
             if i == 0:
                 collision_check = False
             else:
@@ -266,8 +267,10 @@ class MotionPlanner():
         joint_vals = joint_vals[::-1]  # reverse: from pre_suction_pos to suction_pos
         suction_joint_dict_list = self.format_joint_name_val_dict(robot.joint_names, joint_vals)
         
+
         # * generate a plan from start_joint to pre_suction_joint
         pre_suction_joint_dict = suction_joint_dict_list[0]
+        # print('suction_plan calling motion_plan_joint..')
         plan = self.motion_plan_joint(start_joint_dict, pre_suction_joint_dict, robot)
         joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
         pre_suction_joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
@@ -311,8 +314,10 @@ class MotionPlanner():
                 continue
             new_goal_joint_dict[name] = val
         goal_joint_dict = new_goal_joint_dict
-
+        
+        start_time = time.time()
         plan = self.motion_plan_joint(start_joint_dict, goal_joint_dict, robot, [aco])
+        print('motion_plan_joint takes time: ', time.time() - start_time)
         joint_names, positions, _ = self.extract_plan_to_joint_list(plan)
         suction_joint_dict_list = self.format_joint_name_val_dict(joint_names, positions)
 
@@ -361,7 +366,7 @@ class MotionPlanner():
         
         self.move_group.set_joint_value_target(goal_joint_dict)
 
-        self.move_group.set_planning_time(15)
+        self.move_group.set_planning_time(14)
         self.move_group.set_num_planning_attempts(5)
         self.move_group.allow_replanning(False)
 
@@ -396,8 +401,9 @@ class MotionPlanner():
 
         prev_joint = start_joint
 
-        joint_vals = []
-        for i in range(n_step):
+        joint_vals = [prev_joint]
+
+        for i in range(1,n_step):
             tip_pos_step = tip_pos + move_vec * i * step
             # get joints (through ik) for current step
             if i == 0:

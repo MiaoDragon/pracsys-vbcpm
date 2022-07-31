@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: vbcpm_execution_system
+    relative_path: data/models/robot/motoman.urdf
+    xacro_args: ""
+  SRDF:
+    relative_path: config/sda10f.srdf
+  CONFIG:
+    author_name: Yinglong Miao
+    author_email: ym420@scarletmail.rutgers.edu
+    generated_timestamp: 1638396264
