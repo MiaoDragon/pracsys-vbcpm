@@ -7,7 +7,7 @@
             "posm": [0,0,0],
             "ori": [0,0,0,1]
         },
-        "urdf": "data/models/baxter/baxter.urdf",
+        "urdf": "urdf/baxter.urdf",
         "urdfm": "data/models/robot/motoman.urdf"
     },
     "workspace":

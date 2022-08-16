@@ -1,3 +1,4 @@
+import os
 import time
 import copy
 import random
@@ -16,7 +17,7 @@ from visual_utilities import *
 from dep_graph import DepGraph
 from workspace import Workspace
 from occlusion_scene import OcclusionScene
-from baxter_planner import BaxterPlanner as Planner
+from bullet_baxter_planner import BulletBaxterPlanner as Planner
 
 
 class Pipeline():
@@ -47,6 +48,7 @@ class Pipeline():
         self.prev_arm = None
 
         rospy.init_node("pipeline", anonymous=False)
+        rospy.on_shutdown(lambda: os.system('pkill -9 -f pipeline.py'))
         self.planner = Planner(self.robot, is_sim=True)
         perception_sub = rospy.Subscriber(
             '/perception', PercievedObject, self.planner.scene.updatePerception
@@ -172,7 +174,6 @@ class Pipeline():
 
     def pick(self, obj_name):
         pre_disp_dist = 0.06
-        grip_offset = 0.0
         obj_id = self.obj_ids[self.name2ind[obj_name]]
 
         # choose closest arm
@@ -198,36 +199,34 @@ class Pipeline():
         res = False
         for chirality in arms:
             gripper_id = self.robot.left_gripper_id if chirality == 'left' else self.robot.right_gripper_id
-            t0 = time.time()
-            poses = self.robot.getGrasps(
-                obj_id, offset2=(0, 0, grip_offset - pre_disp_dist)
-            )
-            fposes = self.robot.filterGrasps(gripper_id, poses)
-            # pick arm with best grasp pose:
-            # chirality, fposes = min(
-            #     ('left', filterPosesLeft), ('right', filterPosesRight),
-            #     key=lambda x: (len(x[1][0]['collisions']), x[1][0]['dist'])
-            #     if len(x[1]) > 0 else (np.inf, np.inf)
-            # )
-            t1 = time.time()
-            print("Grasp-sampling Time: ", t1 - t0)
+            if False:
+                t0 = time.time()
+                poses = self.robot.getGrasps(obj_id, offset2=(0, 0, -pre_disp_dist))
+                fposes = self.robot.filterGrasps(gripper_id, poses)
+                # pick arm with best grasp pose:
+                # chirality, fposes = min(
+                #     ('left', filterPosesLeft), ('right', filterPosesRight),
+                #     key=lambda x: (len(x[1][0]['collisions']), x[1][0]['dist'])
+                #     if len(x[1]) > 0 else (np.inf, np.inf)
+                # )
+                t1 = time.time()
+                print("Grasp-sampling Time: ", t1 - t0)
 
-            eof_poses = [
-                x['eof_pose_offset'] for x in fposes if len(x['collisions']) == 0
-            ]
+                eof_poses = [
+                    x['eof_pose_offset'] for x in fposes if len(x['collisions']) == 0
+                ]
 
-            if len(eof_poses) == 0:
-                print(f"No valid grasps of '{obj_name} for {chirality} arm'!")
-                continue
+                if len(eof_poses) == 0:
+                    print(f"No valid grasps of '{obj_name} for {chirality} arm'!")
+                    continue
 
             if self.prev_arm and chirality != self.prev_arm:
                 self.planner.go_to_rest_pose()
             self.prev_arm = chirality
 
-            res = self.planner.pick(
+            res = self.planner.pick2(
                 f'Obj_{obj_id}',
-                grasps=eof_poses,
-                grip_offset=grip_offset,
+                # grasps=eof_poses,
                 pre_disp_dist=pre_disp_dist,
                 v_scale=0.35,
                 a_scale=1.0,

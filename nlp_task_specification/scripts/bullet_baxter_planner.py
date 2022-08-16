@@ -20,7 +20,7 @@ import pybullet as p
 from robot import Robot
 
 
-class BaxterPlanner(Planner):
+class BulletBaxterPlanner(Planner):
 
     class MoveGroup(moveit_commander.MoveGroupCommander):
 
@@ -51,7 +51,7 @@ class BaxterPlanner(Planner):
                 copy.deepcopy(plan_msg.joint_trajectory.points[0]),
                 copy.deepcopy(plan_msg.joint_trajectory.points[-1]),
             ]
-            short_duration = rospy.Duration.from_sec(0.01)
+            short_duration = rospy.Duration.from_sec(0.005)
             short_plan_msg.joint_trajectory.points[-1].time_from_start = short_duration
             super().execute(short_plan_msg, wait)
 
@@ -324,13 +324,12 @@ class BaxterPlanner(Planner):
             else:
                 print("Invalid group name!", file=sys.stderr)
 
-    def pick(
+    def pick2(
         self,
         obj_name,
         constraints=None,
         grasps=None,
-        grip_offset=0.0,
-        pre_disp_dist=0.06,
+        pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.06,
         eef_step=0.001,
@@ -356,9 +355,7 @@ class BaxterPlanner(Planner):
         if grasps:
             poses = grasps
         else:
-            poses = self.grasps.get_simple_grasps(
-                obj_name, (0, 0, grip_offset - pre_disp_dist)
-            )
+            poses = self.grasps.get_simple_grasps(obj_name, (0, 0, -pre_disp_dist))
         move_group.set_pose_targets(poses)
         success, raw_plan, planning_time, error_code = move_group.plan()
         move_group.clear_pose_targets()
@@ -553,7 +550,7 @@ class BaxterPlanner(Planner):
             ".",
             file=sys.stderr
         )
-        if fraction < 0.3:
+        if fraction < 0.1:
             # return -fraction
             print("Skipping Approach. Dropping Object instead!", file=sys.stderr)
         else:

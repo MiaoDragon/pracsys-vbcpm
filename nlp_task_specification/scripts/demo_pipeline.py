@@ -31,7 +31,7 @@ from visual_utilities import *
 from dep_graph import DepGraph
 from workspace import Workspace
 from occlusion_scene import OcclusionScene
-from baxter_planner import BaxterPlanner as Planner
+from bullet_baxter_planner import BulletBaxterPlanner as Planner
 
 
 def random_one_problem(scene, num_objs, num_hiding_objs):
@@ -45,7 +45,7 @@ def random_one_problem(scene, num_objs, num_hiding_objs):
     scene_dict = json.load(f)
 
     rp = rospkg.RosPack()
-    package_path = rp.get_path('vbcpm_execution_system')
+    package_path = rp.get_path('baxter_description')
     urdf_path = os.path.join(package_path, scene_dict['robot']['urdf'])
     joints = [0.] * 16
     robot = Robot(

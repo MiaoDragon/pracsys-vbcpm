@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import os
 import numpy as np
 
 import rospy
@@ -16,6 +17,7 @@ class PybulletScenePublisher:
 
     def __init__(self, ignore_ids={0}):
         rospy.init_node('PybulletScenePublisher')
+        rospy.on_shutdown(lambda: os.system('pkill -9 -f pybullet_scene_publisher.py'))
         self.publisher = rospy.Publisher('/perception', PercievedObject, queue_size=10)
         self.pybullet_id = p.connect(p.SHARED_MEMORY)
         self.ignore_ids = ignore_ids
@@ -60,7 +62,7 @@ class PybulletScenePublisher:
             )
             return None
         else:
-            SCALE = 1.10
+            SCALE = 1.05
             obj_msg.type = PercievedObject.SOLID_PRIMITIVE
             if shape[2] == p.GEOM_BOX:
                 obj_msg.solid.type = SolidPrimitive.BOX

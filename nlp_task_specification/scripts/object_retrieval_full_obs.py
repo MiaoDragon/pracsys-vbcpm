@@ -38,7 +38,7 @@ from occlusion_scene import OcclusionScene
 from std_msgs.msg import Header
 from moveit_msgs.msg import RobotState
 from sensor_msgs.msg import JointState
-from baxter_planner import BaxterPlanner as Planner
+from bullet_baxter_planner import BulletBaxterPlanner as Planner
 from planit.msg import PercievedObject
 from pybullet_scene_publisher import PybulletScenePublisher
 
@@ -54,7 +54,7 @@ def random_one_problem(scene, level, num_objs, num_hiding_objs):
     scene_dict = json.load(f)
 
     rp = rospkg.RosPack()
-    package_path = rp.get_path('vbcpm_execution_system')
+    package_path = rp.get_path('baxter_description')
     urdf_path = os.path.join(package_path, scene_dict['robot']['urdf'])
     joints = [0.] * 16
     robot = Robot(
@@ -618,6 +618,7 @@ while pose_ind != 'q':
 
 ### Pick Test ###
 rospy.init_node("planit", anonymous=False)
+rospy.on_shutdown(lambda: os.system('pkill -9 -f object_retrieval_full_obs.py'))
 planner = Planner(robot, is_sim=True)
 # print(planner.move_group_left.get_current_state().joint_state)
 # print(planner.move_group_right.get_current_state().joint_state)

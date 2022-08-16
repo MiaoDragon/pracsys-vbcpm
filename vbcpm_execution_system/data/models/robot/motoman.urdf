@@ -546,7 +546,7 @@
         <color rgba="0 0 1 1"/>
       </material>
     </visual>
-    <collision>
+    <collision concave="yes">
       <geometry>
         <mesh filename="package://vbcpm_execution_system/data/models/robot/sda10f_description/meshes/sda10f/collision/vacuum_gripper_no_mouth.stl"/>
         <!-- <mesh filename="sda10f_description/meshes/sda10f/collision/vacuum_gripper_no_mouth.stl"/> -->
