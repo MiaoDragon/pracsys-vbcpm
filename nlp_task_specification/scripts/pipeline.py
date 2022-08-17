@@ -91,7 +91,7 @@ class Pipeline():
                 else:
                     self.obj_poses[i] = None
         else:
-            rgb_img, depth_img, _tmp, self.obj_poses, target_obj_pose = camera.sense(
+            rgb_img, depth_img, _tmp, self.obj_poses, target_obj_pose = self.camera.sense(
                 self.obj_pcds[1:],
                 self.obj_pcds[0],
                 self.obj_ids[1:],
@@ -123,7 +123,7 @@ class Pipeline():
 
         # get z coord for object placement
         mins, maxs = p.getAABB(obj_id, physicsClientId=self.pid)
-        z = mins[2] - ws_low[2] - 0.005
+        z = mins[2] - ws_low[2] + 0.001
 
         # sense the scene
         occlusion_label, occupied_label, occluded_list = self.sense()
@@ -173,7 +173,7 @@ class Pipeline():
         )
 
     def pick(self, obj_name):
-        pre_disp_dist = 0.06
+        pre_disp_dist = 0.05
         obj_id = self.obj_ids[self.name2ind[obj_name]]
 
         # choose closest arm
@@ -199,7 +199,7 @@ class Pipeline():
         res = False
         for chirality in arms:
             gripper_id = self.robot.left_gripper_id if chirality == 'left' else self.robot.right_gripper_id
-            if False:
+            if True:
                 t0 = time.time()
                 poses = self.robot.getGrasps(obj_id, offset2=(0, 0, -pre_disp_dist))
                 fposes = self.robot.filterGrasps(gripper_id, poses)
@@ -226,7 +226,7 @@ class Pipeline():
 
             res = self.planner.pick2(
                 f'Obj_{obj_id}',
-                # grasps=eof_poses,
+                grasps=eof_poses,
                 pre_disp_dist=pre_disp_dist,
                 v_scale=0.35,
                 a_scale=1.0,

@@ -57,10 +57,11 @@ class BulletBaxterPlanner(Planner):
 
             joint_names = plan_msg.joint_trajectory.joint_names
             indices = [self.robot.joint_name2ind[x] for x in joint_names]
+            # print(joint_names)
             if len(joint_names) == 7:
                 arm = joint_names[0].split('_')[0]
                 group = arm + '_arm'
-            elif len(joint_names) == 2:
+            elif len(joint_names) in (1, 2):
                 arm = 'left' if joint_names[0].split('_')[0] == 'l' else 'right'
                 group = arm + '_hand'
             else:
@@ -214,7 +215,7 @@ class BulletBaxterPlanner(Planner):
         self,
         command,
         group_name="left_hand",
-        # obj_id=None,
+        obj_pid=None,
     ):
         if self.is_sim:
             # if obj_id is None:
@@ -262,27 +263,32 @@ class BulletBaxterPlanner(Planner):
                 last.time_from_start = rospy.Duration.from_sec(0.5)
                 plan.joint_trajectory.points.append(last)
             # print(plan)
+
+            # if command == 'close':
+            #     move_group.attached_obj = obj_pid
             move_group.clear_pose_targets()
             move_group.execute(plan, wait=True)
             move_group.stop()
+            # if command == 'close':
+            #     move_group.attached_obj = None
 
             if command == 'close':
-                for i in range(p.getNumBodies(physicsClientId=self.pb_robot.pybullet_id)):
-                    obj_pid = p.getBodyUniqueId(
-                        i,
-                        physicsClientId=self.pb_robot.pybullet_id,
-                    )
-                    if obj_pid in [0, 1]:
-                        continue
-                    contacts = p.getClosestPoints(
-                        self.pb_robot.robot_id,
-                        obj_pid,
-                        distance=0.0,
-                        physicsClientId=self.pb_robot.pybullet_id,
-                    )
-                    if len(contacts):
-                        break
-                    # print("***ID:", obj_pid)
+                # for i in range(p.getNumBodies(physicsClientId=self.pb_robot.pybullet_id)):
+                #     obj_pid = p.getBodyUniqueId(
+                #         i,
+                #         physicsClientId=self.pb_robot.pybullet_id,
+                #     )
+                #     if obj_pid in [0, 1]:
+                #         continue
+                #     contacts = p.getClosestPoints(
+                #         self.pb_robot.robot_id,
+                #         obj_pid,
+                #         distance=0.0,
+                #         physicsClientId=self.pb_robot.pybullet_id,
+                #     )
+                #     if len(contacts):
+                #         break
+                #     # print("***ID:", obj_pid)
                 self.move_group_left.attached_obj = obj_pid
                 self.move_group_right.attached_obj = obj_pid
 
@@ -354,13 +360,26 @@ class BulletBaxterPlanner(Planner):
         # plan to pre goal poses
         if grasps:
             poses = grasps
+            _planning_time = 0
         else:
+            # check final pose first
+            poses = self.grasps.get_simple_grasps(obj_name, (0, 0, 0))
+            print("num poses:", len(poses))
+            move_group.set_pose_targets(poses)
+            success, _raw_plan, _planning_time, _error_code = move_group.plan()
+            move_group.clear_pose_targets()
+            if not success:
+                print("No collision free graps!", file=sys.stderr)
+                return -1
+            # pre pick pose
             poses = self.grasps.get_simple_grasps(obj_name, (0, 0, -pre_disp_dist))
+            print("num poses:", len(poses))
         move_group.set_pose_targets(poses)
         success, raw_plan, planning_time, error_code = move_group.plan()
+        planning_time += _planning_time
         move_group.clear_pose_targets()
         if not success:
-            self.do_end_effector('close', group_name=grasping_group)
+            self.do_end_effector('open', group_name=grasping_group)
             return error_code
         else:
             print(
@@ -383,37 +402,40 @@ class BulletBaxterPlanner(Planner):
         move_group.stop()
 
         # slide to goal
-        cpose = pose_msg2homogeneous(move_group.get_current_pose().pose)
-        trans = translation_matrix((0, 0, pre_disp_dist))
-        wpose = homogeneous2pose_msg(concatenate_matrices(cpose, trans))
-        waypoints = [copy.deepcopy(wpose)]
-        raw_plan, fraction = move_group.compute_cartesian_path(
-            waypoints, eef_step, jump_threshold, avoid_collisions=False
-        )
-        print(
-            "Planned approach",
-            fraction * pre_disp_dist,
-            "for",
-            obj_name,
-            ".",
-            file=sys.stderr
-        )
-        if fraction < 0.5:
-            return -fraction
+        if pre_disp_dist > 0:
+            cpose = pose_msg2homogeneous(move_group.get_current_pose().pose)
+            trans = translation_matrix((0, 0, pre_disp_dist))
+            wpose = homogeneous2pose_msg(concatenate_matrices(cpose, trans))
+            waypoints = [copy.deepcopy(wpose)]
+            raw_plan, fraction = move_group.compute_cartesian_path(
+                waypoints, eef_step, jump_threshold, avoid_collisions=True
+            )
+            print(
+                "Planned approach",
+                fraction * pre_disp_dist,
+                "for",
+                obj_name,
+                ".",
+                file=sys.stderr
+            )
+            if fraction < 0.5:
+                return -fraction
 
-        # retime and execute trajectory
-        plan = move_group.retime_trajectory(
-            self.robot.get_current_state(),
-            raw_plan,
-            velocity_scaling_factor=v_scale,
-            acceleration_scaling_factor=a_scale,
-        )
-        move_group.execute(plan, wait=True)
-        move_group.stop()
-        print("Approached", obj_name, ".", file=sys.stderr)
+            # retime and execute trajectory
+            plan = move_group.retime_trajectory(
+                self.robot.get_current_state(),
+                raw_plan,
+                velocity_scaling_factor=v_scale,
+                acceleration_scaling_factor=a_scale,
+            )
+            move_group.execute(plan, wait=True)
+            move_group.stop()
+            print("Approached", obj_name, ".", file=sys.stderr)
 
         # close gripper
-        self.do_end_effector('close', group_name=grasping_group)
+        self.do_end_effector(
+            'close', group_name=grasping_group, obj_pid=int(obj_name[4:])
+        )
 
         # attach to robot chain
         success = self.attach(
@@ -465,10 +487,10 @@ class BulletBaxterPlanner(Planner):
         partial_poses,
         constraints=None,
         pre_disp_dir=(0, 0, 1),
-        pre_disp_dist=0.06,
+        pre_disp_dist=0.05,
         post_disp_dir=(0, 0, 1),
         post_disp_dist=0.12,
-        eef_step=0.005,
+        eef_step=0.001,
         jump_threshold=5.0,
         v_scale=0.25,
         a_scale=1.0,
@@ -533,7 +555,7 @@ class BulletBaxterPlanner(Planner):
         print("Preplaced.", file=sys.stderr)
 
         # slide to placement
-        scale = 0.95 * pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
+        scale = pre_disp_dist / dist(pre_disp_dir, (0, 0, 0))
         wpose = move_group.get_current_pose().pose
         wpose.position.x += scale * pre_disp_dir[0] * -1
         wpose.position.y += scale * pre_disp_dir[1] * -1
@@ -583,7 +605,7 @@ class BulletBaxterPlanner(Planner):
         wpose.position.z += scale * post_disp_dir[2]
         waypoints = [copy.deepcopy(wpose)]
         raw_plan, fraction = move_group.compute_cartesian_path(
-            waypoints, eef_step, jump_threshold, avoid_collisions=False
+            waypoints, eef_step, jump_threshold, avoid_collisions=True
         )
         print(
             "Planned displacement",
